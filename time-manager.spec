@@ -134,24 +134,58 @@ excludes = [
     "tkinter",
 ]
 
-a = Analysis(
-    [str(ROOT / "packaging" / "entry_console.py")],
-    pathex=[str(ROOT)],
-    binaries=[],
-    datas=datas,
-    hiddenimports=hiddenimports,
-    hookspath=[],
-    hooksconfig={},
-    runtime_hooks=[],
-    excludes=excludes,
-    noarchive=False,
-)
+def analyze(entry: str) -> Analysis:
+    """One Analysis per entry point — the two exes run *different* programs.
 
-pyz = PYZ(a.pure)
+    Passing a single Analysis's `scripts` to both EXEs (what this spec used to
+    do) gave the tray exe the *console* entry point: double-clicking
+    TimeManagerTray.exe ran the CLI, which with no arguments prints --help and
+    exits 0. A windowed build has no stdout/stderr (see
+    packaging/entry_tray.py), so that help goes nowhere, the process ends
+    cleanly and instantly, no dialog and no log: the field-reported
+    "double-clicking the tray exe does nothing at all".
+    """
+    return Analysis(
+        [str(ROOT / "packaging" / entry)],
+        pathex=[str(ROOT)],
+        binaries=[],
+        datas=datas,
+        hiddenimports=hiddenimports,
+        hookspath=[],
+        hooksconfig={},
+        runtime_hooks=[],
+        excludes=excludes,
+        noarchive=False,
+    )
+
+
+a_console = analyze("entry_console.py")
+a_tray = analyze("entry_tray.py")
+
+pyz_console = PYZ(a_console.pure)
+pyz_tray = PYZ(a_tray.pure)
+
+
+def merged(*tocs) -> list:
+    """Concatenate PyInstaller TOCs, keeping the first entry per destination.
+
+    The two Analyses resolve largely overlapping dependency sets; COLLECT
+    wants one list, so duplicates are dropped rather than shipped twice.
+    """
+    seen: set = set()
+    out: list = []
+    for toc in tocs:
+        for entry in toc:
+            if entry[0] in seen:
+                continue
+            seen.add(entry[0])
+            out.append(entry)
+    return out
+
 
 exe_console = EXE(
-    pyz,
-    a.scripts,
+    pyz_console,
+    a_console.scripts,
     [],
     exclude_binaries=True,
     name="TimeManager",
@@ -165,8 +199,8 @@ exe_console = EXE(
 )
 
 exe_tray = EXE(
-    pyz,
-    a.scripts,
+    pyz_tray,
+    a_tray.scripts,
     [],
     exclude_binaries=True,
     name="TimeManagerTray",
@@ -186,8 +220,8 @@ exe_tray = EXE(
 coll = COLLECT(
     exe_console,
     exe_tray,
-    a.binaries,
-    a.datas,
+    merged(a_console.binaries, a_tray.binaries),
+    merged(a_console.datas, a_tray.datas),
     strip=False,
     upx=False,
     upx_exclude=[],
