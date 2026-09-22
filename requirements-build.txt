@@ -1,0 +1,7 @@
+# Build-time only dependencies. The shipped app needs requirements.txt alone.
+#
+#   pip install -r requirements.txt -r requirements-build.txt
+#   pyinstaller time-manager.spec --noconfirm
+#
+pyinstaller>=6.10,<7 ; platform_system=="Windows"
+pyinstaller>=6.10,<7

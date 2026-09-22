@@ -1,0 +1,10 @@
+# Windows App & Website Time Manager — pinned runtime/test deps.
+# Python 3.12+ required (developed/tested on 3.12/3.13).
+
+PySide6>=6.7.0
+psutil>=6.0.0
+websockets>=13.1
+pytest>=8.0
+
+# Windows-only: foreground-window detection, startup, process control.
+pywin32>=306; platform_system=="Windows"

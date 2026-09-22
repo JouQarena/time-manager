@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Time Manager</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <header>
+    <span class="dot" id="status-dot"></span>
+    <div>
+      <h1>Time Manager</h1>
+      <p id="status-line">Checking the agent…</p>
+    </div>
+  </header>
+
+  <section id="current">
+    <h2>This tab</h2>
+    <p id="current-domain" class="mono">—</p>
+    <p id="current-state" class="muted">—</p>
+  </section>
+
+  <section id="sites">
+    <h2>Limited sites</h2>
+    <ul id="rules"></ul>
+    <p id="no-rules" class="muted hidden">No website rules yet — add one in the desktop app.</p>
+  </section>
+
+  <footer>
+    <button id="reconnect" type="button">Reconnect</button>
+    <button id="options" type="button" class="link">Options</button>
+  </footer>
+
+  <p id="error" class="error hidden"></p>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

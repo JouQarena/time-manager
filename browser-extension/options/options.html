@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Time Manager — Options</title>
+  <link rel="stylesheet" href="options.css" />
+</head>
+<body>
+  <main>
+    <h1>Time Manager Companion</h1>
+    <p class="muted">
+      This extension talks only to the Time Manager agent running on this
+      computer (<span class="mono">127.0.0.1</span>). Nothing is sent anywhere else.
+    </p>
+
+    <section>
+      <h2>Pairing</h2>
+      <ol>
+        <li>In the desktop app run <span class="mono">python -m app.main --show-token</span>.</li>
+        <li>Paste the 64-character token below.</li>
+        <li>Press <strong>Save &amp; test</strong> — the badge should stop showing “!”.</li>
+      </ol>
+
+      <label for="token">Agent token</label>
+      <input id="token" type="text" spellcheck="false" autocomplete="off"
+             placeholder="64 hex characters" />
+
+      <div class="grid">
+        <div>
+          <label for="host">Host</label>
+          <input id="host" type="text" spellcheck="false" />
+        </div>
+        <div>
+          <label for="port">Port</label>
+          <input id="port" type="number" min="1024" max="65535" />
+        </div>
+      </div>
+
+      <label class="checkbox">
+        <input id="enabled" type="checkbox" />
+        <span>Report browsing activity to the agent</span>
+      </label>
+
+      <div class="actions">
+        <button id="save" type="button">Save &amp; test</button>
+        <button id="reconnect" type="button" class="link">Reconnect</button>
+      </div>
+      <p id="message" class="message"></p>
+    </section>
+
+    <section>
+      <h2>Status</h2>
+      <dl>
+        <dt>Connection</dt><dd id="status">—</dd>
+        <dt>Agent version</dt><dd id="agent">—</dd>
+        <dt>This browser id</dt><dd id="browser-id" class="mono">—</dd>
+        <dt>Messages</dt><dd id="messages">—</dd>
+      </dl>
+    </section>
+
+    <section>
+      <h2>Privacy &amp; limitations</h2>
+      <ul class="muted">
+        <li>Only the <em>domain</em> of the active tab is reported — never URLs,
+          page titles or content.</li>
+        <li>Timestamps from this extension are never used for accounting; the
+          agent stamps everything with its own clock.</li>
+        <li>Blocks are rendered locally in the page; no traffic is proxied.</li>
+        <li>If the agent is not running, nothing is counted (the UI shows
+          “Agent not reachable”).</li>
+        <li>Chrome may suspend the service worker while the browser idles; the
+          agent then pauses website timers until the link returns.</li>
+      </ul>
+    </section>
+  </main>
+  <script type="module" src="options.js"></script>
+</body>
+</html>
