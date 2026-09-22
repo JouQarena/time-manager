@@ -84,9 +84,13 @@ if __name__ == "__main__":
     try:
         from app.main import main
 
-        # Default to the desktop app; extra flags still work, so
-        # `TimeManagerTray.exe --gui-shot` stays usable as a diagnostic.
-        code = main(["--gui"] + sys.argv[1:])
+        # Default to the desktop app; explicit flags are passed through as-is,
+        # so `TimeManagerTray.exe --monitor` (documented) and
+        # `TimeManagerTray.exe --gui-shot` (the diagnostic this spec's
+        # --console-tray note points at) actually work. Prepending --gui
+        # unconditionally made any flag a mutually-exclusive-group error.
+        argv = sys.argv[1:] or ["--gui"]
+        code = main(argv)
         # --gui-shot (and friends) already returned; never "pause" for them.
         ran_helper = bool(sys.argv[1:])
     except Exception:  # noqa: BLE001 - the net is the whole point
