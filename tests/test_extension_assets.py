@@ -59,14 +59,14 @@ def node_available() -> bool:
 
 # ------------------------------------------------------------------- manifest
 def test_manifest_is_valid_mv3():
-    manifest = json.loads((EXT / "manifest.json").read_text())
+    manifest = json.loads((EXT / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["manifest_version"] == 3
     assert manifest["background"]["type"] == "module"
     assert manifest["version"].count(".") == 2
 
 
 def test_manifest_files_exist():
-    manifest = json.loads((EXT / "manifest.json").read_text())
+    manifest = json.loads((EXT / "manifest.json").read_text(encoding="utf-8"))
     referenced = [manifest["background"]["service_worker"]]
     referenced += [script for entry in manifest["content_scripts"] for script in entry["js"]]
     referenced.append(manifest["action"]["default_popup"])
@@ -78,7 +78,7 @@ def test_manifest_files_exist():
 
 
 def test_manifest_stays_minimal_and_local():
-    manifest = json.loads((EXT / "manifest.json").read_text())
+    manifest = json.loads((EXT / "manifest.json").read_text(encoding="utf-8"))
     assert set(manifest["permissions"]) <= {"tabs", "storage", "alarms", "idle"}
     assert manifest["host_permissions"] == []  # no standing access to sites
     assert "<all_urls>" not in manifest["permissions"]
@@ -94,7 +94,7 @@ def test_no_remote_code_or_telemetry_hosts():
     allowed_local = ("ws://${", "http://*/*", "https://*/*", "\"http:\"", "'http:'",
                      "http://\" + host", "https://\" + host")
     for path in sorted(EXT.rglob("*.js")):
-        source = path.read_text()
+        source = path.read_text(encoding="utf-8")
         for needle in banned:
             if needle in source:
                 for line in source.splitlines():
@@ -103,7 +103,7 @@ def test_no_remote_code_or_telemetry_hosts():
 
 
 def test_service_worker_has_no_dynamic_eval():
-    source = (EXT / "background" / "service-worker.js").read_text()
+    source = (EXT / "background" / "service-worker.js").read_text(encoding="utf-8")
     for banned in ("eval(", "new Function(", "document.write"):
         assert banned not in source
 
@@ -121,7 +121,8 @@ def test_all_js_parses():
     failures = []
     for path in sorted(EXT.rglob("*.js")):
         result = subprocess.run(
-            ["node", "--check", str(path)], capture_output=True, text=True, timeout=30
+            ["node", "--check", str(path)], capture_output=True, text=True, timeout=30,
+            encoding="utf-8", errors="replace",
         )
         if result.returncode != 0:
             failures.append(f"{path.name}: {result.stderr.strip()[:200]}")
@@ -143,6 +144,7 @@ def test_normalize_js_matches_python():
     result = subprocess.run(
         ["node", "--input-type=module", "-e", script],
         capture_output=True, text=True, timeout=60,
+        encoding="utf-8", errors="replace",
     )
     assert result.returncode == 0, result.stderr
     js_results = json.loads(result.stdout.strip())
@@ -176,6 +178,7 @@ def test_domain_matching_agrees():
     result = subprocess.run(
         ["node", "--input-type=module", "-e", script],
         capture_output=True, text=True, timeout=60,
+        encoding="utf-8", errors="replace",
     )
     assert result.returncode == 0, result.stderr
     js_results = json.loads(result.stdout.strip())
@@ -195,7 +198,7 @@ def test_protocol_constants_match_python():
 
     from app.ipc import protocol
 
-    source = (EXT / "shared" / "protocol.js").read_text()
+    source = (EXT / "shared" / "protocol.js").read_text(encoding="utf-8")
     assert f'PROTOCOL_VERSION = "{protocol.PROTOCOL_VERSION}"' in source
     assert f"DEFAULT_PORT = {protocol.DEFAULT_PORT}" in source
     assert f"HEARTBEAT_INTERVAL_MS = {int(protocol.HEARTBEAT_INTERVAL_SECONDS * 1000)}" in source
@@ -212,9 +215,62 @@ def test_extension_never_sends_unknown_message_types():
     sent = set()
     for name in ("shared/protocol.js", "background/service-worker.js",
                  "content/block-overlay.js", "popup/popup.js", "options/options.js"):
-        source = (EXT / name).read_text()
+        source = (EXT / name).read_text(encoding="utf-8")
         for message_type in protocol.INBOUND_TYPES:
             if f'type: "{message_type}"' in source or f'".type": "{message_type}"' in source:
                 sent.add(message_type)
     assert sent <= set(protocol.INBOUND_TYPES)
     assert "HELLO" in sent and "TAB_ACTIVITY" in sent and "HEARTBEAT" in sent
+
+
+# ------------------------------------------------------------------- the guide
+def test_guide_page_ships_and_is_reachable():
+    """The extension carries its own guide: a local page, no network, linked
+    from the options page, the popup and (on a fresh install) opened by the
+    service worker."""
+    guide = EXT / "guide" / "guide.html"
+    assert guide.is_file(), "browser-extension/guide/guide.html is missing"
+    assert (EXT / "guide" / "guide.js").is_file()
+
+    options = (EXT / "options" / "options.html").read_text(encoding="utf-8")
+    assert "../guide/guide.html" in options, "options page does not link the guide"
+    # The popup opens the guide in a tab (the popup would close under the
+    # reader otherwise), so the button lives in the HTML and the URL in the JS.
+    popup = (EXT / "popup" / "popup.html").read_text(encoding="utf-8")
+    assert 'id="guide"' in popup
+    popup_js = (EXT / "popup" / "popup.js").read_text(encoding="utf-8")
+    assert 'guide/guide.html' in popup_js and "chrome.tabs.create" in popup_js
+
+    worker = (EXT / "background" / "service-worker.js").read_text(encoding="utf-8")
+    assert 'chrome.runtime.getURL("guide/guide.html")' in worker
+    assert 'details.reason === "install"' in worker, (
+        "the guide must open on first install (and never on update/reload)"
+    )
+
+
+def test_guide_is_english_by_default_and_self_contained():
+    """Default language is English — for the extension pages too."""
+    import re
+
+    for page in sorted(EXT.rglob("*.html")):
+        source = page.read_text(encoding="utf-8")
+        assert re.search(r'<html[^>]*lang="en"', source), f"{page.name} is not lang=en"
+        assert "http://" not in source and "https://" not in source, (
+            f"{page.name} references a remote resource"
+        )
+
+    guide = (EXT / "guide" / "guide.html").read_text(encoding="utf-8")
+    # The three things a user must learn from it, in English:
+    for expected in ("Time Manager Companion", "Install &amp; pair",
+                     "The badge, decoded", "Troubleshooting", "never sends URLs"):
+        assert expected in guide
+    # It points at the shipped install guide rather than inventing a second one.
+    assert "docs/INSTALL-EXTENSION.md" in guide
+
+
+def test_guide_js_uses_only_local_messaging():
+    source = (EXT / "guide" / "guide.js").read_text(encoding="utf-8")
+    for banned in ("fetch(", "XMLHttpRequest", "sendBeacon", "eval("):
+        assert banned not in source
+    # It reads status and can force a reconnect — nothing else.
+    assert 'type: "GET_STATUS"' in source and 'type: "RECONNECT"' in source

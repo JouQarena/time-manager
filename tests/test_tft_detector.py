@@ -105,7 +105,7 @@ def test_loading_phase_waits(tmp_path):
     logs = tmp_path / "logs"
     logs.mkdir()
     (logs / "LeagueClientUx.log").write_text(
-        '2026-09-21 20:00:00 | info | gameflow phase: InProgress\n')
+        '2026-09-21 20:00:00 | info | gameflow phase: InProgress\n', encoding='utf-8')
     reader = ClientPhaseReader(dirs=[logs], cache_seconds=0)
     d = detector(clock=clock, reader=reader)
     v = d.probe(probe(CLIENT))
@@ -120,7 +120,7 @@ def test_fresh_game_logs_wait(tmp_path):
     logs = tmp_path / "logs"
     (logs / "GameLogs").mkdir(parents=True)
     log = logs / "GameLogs" / "tft-session.log"
-    log.write_text("match log\n")
+    log.write_text("match log\n", encoding='utf-8')
     stamp = clock.wall()
     os.utime(log, (stamp, stamp))
     watcher = GameLogWatcher(dirs=[logs], fresh_seconds=60, cache_seconds=0,

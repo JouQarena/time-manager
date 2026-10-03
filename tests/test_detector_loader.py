@@ -30,7 +30,7 @@ class MinecraftDetector(GameSessionDetector):
 
 def write(tmp_path, name, text):
     path = tmp_path / name
-    path.write_text(text)
+    path.write_text(text, encoding='utf-8')
     return path
 
 

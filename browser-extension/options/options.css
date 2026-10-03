@@ -21,6 +21,17 @@ body {
 }
 
 main { max-width: 660px; margin: 0 auto; }
+
+/* Shared section nav (Settings / Guide / Popup). */
+nav[aria-label="Sections"] { display: flex; gap: 6px; margin: 0 0 18px; }
+nav[aria-label="Sections"] a.tab {
+  padding: 6px 12px; border-radius: 8px; text-decoration: none;
+  color: var(--muted); font-size: 13px; border: 1px solid transparent;
+}
+nav[aria-label="Sections"] a.tab:hover { color: var(--text); border-color: var(--line); }
+nav[aria-label="Sections"] a.tab[aria-current="page"] {
+  color: var(--text); background: var(--panel); border-color: var(--line); font-weight: 600;
+}
 h1 { font-size: 22px; margin: 0 0 6px; }
 h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .07em;
      color: var(--muted); margin: 0 0 12px; }

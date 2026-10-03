@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.i18n import tr
 from app.ui.qt.theme import PALETTE, color
 from app.ui.viewmodel import RuleRow
 
@@ -69,9 +70,12 @@ class RuleCard(QFrame):
         self.state_chip = Chip(row.state_text, row.state_role)
         header.addWidget(self.state_chip)
         header.addStretch(1)
-        self.edit_button = QPushButton("Edit")
+        self._enabled = row.enabled
+        self.edit_button = QPushButton(tr("card.edit"))
         self.edit_button.setObjectName("Ghost")
-        self.toggle_button = QPushButton("Disable" if row.enabled else "Enable")
+        self.toggle_button = QPushButton(
+            tr("card.disable") if row.enabled else tr("card.enable")
+        )
         self.toggle_button.setObjectName("Ghost")
         header.addWidget(self.edit_button)
         header.addWidget(self.toggle_button)
@@ -98,8 +102,10 @@ class RuleCard(QFrame):
         outer.addWidget(self.footnote)
 
         self.edit_button.clicked.connect(lambda: self.edit_requested.emit(self.rule_id))
+        # The label is translated, so the *state* decides the next action —
+        # comparing button text to "Disable" would break in any other language.
         self.toggle_button.clicked.connect(
-            lambda: self.toggle_requested.emit(self.rule_id, not self.toggle_button.text() == "Disable")
+            lambda: self.toggle_requested.emit(self.rule_id, not self._enabled)
         )
         self.update_row(row)
 
@@ -109,7 +115,9 @@ class RuleCard(QFrame):
         self.state_chip.update_text(row.state_text, row.state_role)
         self.used.setText(f"{row.used_text} / {row.limit_text}")
         self.remaining.setText(row.remaining_text)
-        self.footnote.setText(row.session_text + (" · paused" if row.paused else ""))
+        self.footnote.setText(
+            row.session_text + (tr("card.paused_suffix") if row.paused else "")
+        )
         percent = int(round(row.progress * 100))
         self.progress.setValue(percent)
         chunk = color("bad" if percent >= 100 else "warn" if percent >= 80 else "info")
@@ -117,7 +125,11 @@ class RuleCard(QFrame):
             f"QProgressBar {{ background: #232842; border: 0; border-radius: 4px; }}"
             f"QProgressBar::chunk {{ background: {chunk}; border-radius: 4px; }}"
         )
-        self.toggle_button.setText("Disable" if row.enabled else "Enable")
+        self._enabled = row.enabled
+        self.edit_button.setText(tr("card.edit"))
+        self.toggle_button.setText(
+            tr("card.disable") if row.enabled else tr("card.enable")
+        )
 
 
 class Panel(QFrame):
@@ -129,17 +141,48 @@ class Panel(QFrame):
         outer = QVBoxLayout(self)
         outer.setContentsMargins(14, 12, 14, 12)
         outer.setSpacing(8)
-        outer.addWidget(label(title.upper(), "SectionTitle"))
+        # Title row: the section title, plus room for one small action button
+        # ("Help" on the browser panel) so panels can explain themselves.
+        header = QHBoxLayout()
+        header.setSpacing(8)
+        self.title_label = label(title.upper(), "SectionTitle")
+        header.addWidget(self.title_label)
+        header.addStretch(1)
+        outer.addLayout(header)
+        self._header = header
         self.body = QVBoxLayout()
         self.body.setSpacing(6)
         self.body.addStretch(1)  # keeps content at the top of the panel
         outer.addLayout(self.body)
+
+    def add_action(self, text: str, slot) -> QPushButton:
+        """A small ghost button on the title row; returned for re-labelling."""
+        button = QPushButton(text)
+        button.setObjectName("Ghost")
+        button.setCursor(Qt.PointingHandCursor)
+        # Tighter than the standard button so the title row keeps its height.
+        button.setStyleSheet(
+            "QPushButton#Ghost { padding: 2px 10px; font-size: 11.5px; }"
+        )
+        button.clicked.connect(slot)
+        self._header.addWidget(button)
+        return button
+
+    def set_title(self, title: str) -> None:
+        """Re-label the panel (language switch, no rebuild)."""
+        self.title_label.setText(title.upper())
 
     def clear(self) -> None:
         while self.body.count():
             item = self.body.takeAt(0)
             widget = item.widget()
             if widget is not None:
+                # Hide *now*, delete later. `deleteLater()` alone leaves the
+                # old label painted until the event loop gets around to it, so
+                # a repaint in between (the language switch re-labels a panel
+                # and grabs a frame, the dashboard refreshes once a second)
+                # shows the outgoing and the incoming text overlapping.
+                widget.hide()
                 widget.deleteLater()
         self.body.addStretch(1)
 
@@ -189,6 +232,7 @@ class SecurityBanner(QFrame):
             item = self._stack.takeAt(0)
             widget = item.widget()
             if widget is not None:
+                widget.hide()          # see Panel.clear() for the why
                 widget.deleteLater()
         for role, text in notices:
             line = QLabel("\u26A0  " + text)
@@ -214,9 +258,9 @@ class EmptyState(QFrame):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 24, 20, 24)
         layout.setSpacing(10)
-        body = label(text, "CardSub", wrap=True)
-        body.setAlignment(Qt.AlignCenter)
-        layout.addWidget(body)
+        self.body_label = label(text, "CardSub", wrap=True)
+        self.body_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.body_label)
         self.action_button = QPushButton(action_text or "—")
         self.action_button.setVisible(bool(action_text))
         row = QHBoxLayout()
@@ -224,3 +268,9 @@ class EmptyState(QFrame):
         row.addWidget(self.action_button)
         row.addStretch(1)
         layout.addLayout(row)
+
+    def set_texts(self, text: str, action_text: str) -> None:
+        """Re-apply the wording after a language switch."""
+        self.body_label.setText(text)
+        self.action_button.setText(action_text or "—")
+        self.action_button.setVisible(bool(action_text))

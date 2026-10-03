@@ -7,6 +7,11 @@
 </head>
 <body>
   <main>
+    <nav aria-label="Sections">
+      <a class="tab" href="options.html" aria-current="page">Settings</a>
+      <a class="tab" href="../guide/guide.html">Guide</a>
+      <a class="tab" href="../popup/popup.html">Popup</a>
+    </nav>
     <h1>Time Manager Companion</h1>
     <p class="muted">
       This extension talks only to the Time Manager agent running on this
@@ -16,10 +21,19 @@
     <section>
       <h2>Pairing</h2>
       <ol>
-        <li>In the desktop app run <span class="mono">python -m app.main --show-token</span>.</li>
+        <li>In the desktop app open <strong>Settings ▸ Browser extension</strong> and press
+          <strong>Copy</strong> next to the pairing token (packaged builds can also run
+          <span class="mono">TimeManager.exe --show-token</span>).</li>
         <li>Paste the 64-character token below.</li>
         <li>Press <strong>Save &amp; test</strong> — the badge should stop showing “!”.</li>
       </ol>
+      <p class="muted">
+        New here, or something is not connecting?
+        <a href="../guide/guide.html">Open the guide</a> — it walks through the
+        whole install, the badge states and every error message. Longer version
+        with screenshots-free steps: <span class="mono">docs/INSTALL-EXTENSION.md</span>
+        in the app folder.
+      </p>
 
       <label for="token">Agent token</label>
       <input id="token" type="text" spellcheck="false" autocomplete="off"

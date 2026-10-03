@@ -136,7 +136,7 @@ def test_watcher_reports_fresh_and_stale_logs(tmp_path):
     logs = tmp_path / "Logs"
     (logs / "GameLogs").mkdir(parents=True)
     log_file = logs / "GameLogs" / "2026-09-21T20-00-00.log"
-    log_file.write_text("game started\n")
+    log_file.write_text("game started\n", encoding='utf-8')
     watcher = GameLogWatcher(dirs=[logs], fresh_seconds=90, cache_seconds=0)
     assert watcher.is_fresh() is True
     assert watcher.newest_log()[0] == log_file
@@ -160,8 +160,8 @@ def test_watcher_picks_the_newest_log_across_directories(tmp_path):
     (b / "GameLogs").mkdir(parents=True)
     older = a / "client.log"
     newer = b / "GameLogs" / "game.log"
-    older.write_text("x")
-    newer.write_text("y")
+    older.write_text("x", encoding='utf-8')
+    newer.write_text("y", encoding='utf-8')
     now = time.time()
     os.utime(older, (now - 500, now - 500))
     os.utime(newer, (now - 1, now - 1))
@@ -174,7 +174,7 @@ def test_watcher_caches_the_directory_scan(tmp_path):
     logs = tmp_path / "Logs"
     (logs / "GameLogs").mkdir(parents=True)
     log_file = logs / "GameLogs" / "x.log"
-    log_file.write_text("x")
+    log_file.write_text("x", encoding='utf-8')
     fake_now = {"t": 0.0}
     watcher = GameLogWatcher(dirs=[logs], cache_seconds=5.0, clock=lambda: fake_now["t"],
                              wall_clock=lambda: time.time())
@@ -189,12 +189,12 @@ def test_a_fresh_client_log_is_not_match_evidence(tmp_path):
     """The client log is written in the lobby too: it must never mean "in game"."""
     logs = tmp_path / "Logs"
     (logs / "GameLogs").mkdir(parents=True)
-    (logs / "LeagueClientUx.log").write_text('"phase":"Lobby"\n')  # fresh, always
+    (logs / "LeagueClientUx.log").write_text('"phase":"Lobby"\n', encoding='utf-8')  # fresh, always
     watcher = GameLogWatcher(dirs=[logs], fresh_seconds=90, cache_seconds=0)
     assert watcher.newest_log() is None
     assert watcher.is_fresh() is None, "client log freshness would stall WAIT rules"
     # …and once the *match* log appears, the signal turns on.
-    (logs / "GameLogs" / "match.log").write_text("loading\n")
+    (logs / "GameLogs" / "match.log").write_text("loading\n", encoding='utf-8')
     assert watcher.is_fresh() is True
 
 
@@ -202,7 +202,7 @@ def test_watcher_accepts_nested_game_log_folders(tmp_path):
     logs = tmp_path / "Logs"
     nested = logs / "GameLogs" / "2026-09-21"
     nested.mkdir(parents=True)
-    (nested / "r3dlog.txt.log").write_text("deep\n")
+    (nested / "r3dlog.txt.log").write_text("deep\n", encoding='utf-8')
     watcher = GameLogWatcher(dirs=[logs], fresh_seconds=90, cache_seconds=0)
     assert watcher.newest_log() is not None
     assert watcher.is_fresh() is True
@@ -242,7 +242,7 @@ CLIENT_LOG_PHASES = [
     ('GameFlowPhase="WaitingForStats"', "waitingforstats"),
 ])
 def test_phase_reader_accepts_several_log_shapes(tmp_path, line, expected):
-    (tmp_path / "LeagueClientUx.log").write_text(line + "\n")
+    (tmp_path / "LeagueClientUx.log").write_text(line + "\n", encoding='utf-8')
     reader = ClientPhaseReader(dirs=[tmp_path], cache_seconds=0)
     assert reader.phase() == expected
 
@@ -255,7 +255,7 @@ def test_phase_reader_reads_the_last_phase(tmp_path):
 
 
 def test_phase_reader_distinguishes_lobby_from_session(tmp_path):
-    (tmp_path / "LeagueClientUx.log").write_text('   "phase" : "Lobby"\n')
+    (tmp_path / "LeagueClientUx.log").write_text('   "phase" : "Lobby"\n', encoding='utf-8')
     reader = ClientPhaseReader(dirs=[tmp_path], cache_seconds=0)
     assert reader.phase() == "lobby"
     assert reader.is_session_phase() is False
@@ -280,11 +280,11 @@ def test_phase_reader_only_reads_the_tail(tmp_path):
 
 def test_phase_reader_caches_and_survives_errors(tmp_path):
     path = tmp_path / "LeagueClientUx.log"
-    path.write_text('"phase":"InProgress"\n')
+    path.write_text('"phase":"InProgress"\n', encoding='utf-8')
     fake_now = {"t": 0.0}
     reader = ClientPhaseReader(dirs=[tmp_path], cache_seconds=5.0, clock=lambda: fake_now["t"])
     assert reader.phase() == "inprogress"
-    path.write_text('"phase":"Lobby"\n')
+    path.write_text('"phase":"Lobby"\n', encoding='utf-8')
     assert reader.phase() == "inprogress"  # cached
     fake_now["t"] = 9.0
     assert reader.phase() == "lobby"
@@ -305,6 +305,6 @@ def test_readers_never_touch_the_network(tmp_path, monkeypatch):
         raise AssertionError("the log readers must not open sockets")
 
     monkeypatch.setattr("socket.socket.connect", explode)
-    (tmp_path / "LeagueClientUx.log").write_text('"phase":"Lobby"\n')
+    (tmp_path / "LeagueClientUx.log").write_text('"phase":"Lobby"\n', encoding='utf-8')
     ClientPhaseReader(dirs=[tmp_path], cache_seconds=0).phase()
     GameLogWatcher(dirs=[tmp_path], cache_seconds=0).is_fresh()

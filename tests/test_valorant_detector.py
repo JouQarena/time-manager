@@ -100,7 +100,7 @@ def test_never_seen_game_settles_immediately():
 def test_match_tokens_in_a_fresh_log_corroborate(tmp_path):
     clock = FakeClock()
     log_file = tmp_path / "ShooterGame.log"
-    log_file.write_text("2026-09-21 MatchID: 1234-abcd GameMap: /Game/Maps/Ascent\n")
+    log_file.write_text("2026-09-21 MatchID: 1234-abcd GameMap: /Game/Maps/Ascent\n", encoding='utf-8')
     stamp = clock.wall()
     import os
     os.utime(log_file, (stamp, stamp))
@@ -119,7 +119,7 @@ def test_match_tokens_in_a_fresh_log_corroborate(tmp_path):
 def test_quiet_or_stale_log_is_not_evidence(tmp_path):
     clock = FakeClock()
     log_file = tmp_path / "ShooterGame.log"
-    log_file.write_text("menu stuff, no match tokens here\n")
+    log_file.write_text("menu stuff, no match tokens here\n", encoding='utf-8')
     stamp = clock.wall()
     import os
     os.utime(log_file, (stamp, stamp))
@@ -127,7 +127,7 @@ def test_quiet_or_stale_log_is_not_evidence(tmp_path):
     assert d.probe(probe(CLIENT)).confidence == 1.0  # no tokens -> no evidence
 
     clock.advance(3600)
-    log_file.write_text("MatchID: old-but-freshly-written\n")
+    log_file.write_text("MatchID: old-but-freshly-written\n", encoding='utf-8')
     stamp = clock.wall()
     os.utime(log_file, (stamp, stamp))
     d2 = detector(tmp_path, clock)
@@ -140,11 +140,11 @@ def test_crashed_game_gets_the_same_protection(tmp_path):
     """A crash (process gone, log tokens fresh) must WAIT, not enforce."""
     clock = FakeClock()
     log_file = tmp_path / "ShooterGame.log"
-    log_file.write_text("MatchID: 42\n")
+    log_file.write_text("MatchID: 42\n", encoding='utf-8')
     d = detector(tmp_path, clock)
     d.probe(probe(GAME, CLIENT))
     clock.advance(31)  # past settle...
-    log_file.write_text("MatchID: 42 still writing\n")
+    log_file.write_text("MatchID: 42 still writing\n", encoding='utf-8')
     stamp = clock.wall()
     import os
     os.utime(log_file, (stamp, stamp))

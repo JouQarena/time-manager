@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtGui import QAction
+from PySide6.QtGui import QAction, QActionGroup
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
+from app.i18n import tr
 from app.ui import viewmodel
 from app.ui.qt.icons import app_icon
+from app.ui.qt.language import apply_language_for, language_choices, language_manager
 
 log = logging.getLogger(__name__)
 
@@ -17,7 +19,9 @@ class TrayController:
     """Owns the tray icon. `available` is False on systems without a tray.
 
     The window and menu are injected so this class stays free of app wiring;
-    `QtNotifier` (below) is what the enforcement engine calls.
+    `QtNotifier` (below) is what the enforcement engine calls. The menu is
+    rebuilt from the catalog on a language switch, so the tray follows the
+    dashboard instead of staying in the language it was created with.
     """
 
     def __init__(self, window, service) -> None:
@@ -30,36 +34,58 @@ class TrayController:
         self._build_menu()
         self.icon.setContextMenu(self.menu)
         self.icon.activated.connect(self._activated)
+        language_manager().changed.connect(self._on_language_changed)
         if self.available:
             self.icon.show()
 
     def _build_menu(self) -> None:
-        open_action = QAction("Open dashboard", self.menu)
-        open_action.triggered.connect(self.show_window)
-        self.menu.addAction(open_action)
+        self.open_action = QAction(tr("tray.open_dashboard"), self.menu)
+        self.open_action.triggered.connect(self.show_window)
+        self.menu.addAction(self.open_action)
         self.menu.addSeparator()
 
-        self.status_action = QAction("Monitoring", self.menu)
+        self.status_action = QAction(tr("health.monitoring"), self.menu)
         self.status_action.setEnabled(False)
         self.menu.addAction(self.status_action)
 
-        pause_menu = self.menu.addMenu("Pause tracking")
+        self.pause_menu = self.menu.addMenu(tr("tray.pause_tracking"))
+        self._pause_actions: list[tuple[int, QAction]] = []
         for minutes in (15, 30, 60):
-            action = QAction(f"{minutes} minutes", self.menu)
+            action = QAction(tr("tray.minutes", minutes=minutes), self.menu)
             action.triggered.connect(lambda _=False, m=minutes: self._pause(m))
-            pause_menu.addAction(action)
-        self.resume_action = QAction("Resume", self.menu)
+            self.pause_menu.addAction(action)
+            self._pause_actions.append((minutes, action))
+        self.resume_action = QAction(tr("tray.resume"), self.menu)
         self.resume_action.triggered.connect(self._resume)
-        pause_menu.addAction(self.resume_action)
+        self.pause_menu.addAction(self.resume_action)
 
-        rules_action = QAction("Rules and usage…", self.menu)
-        rules_action.triggered.connect(self.show_window)
-        self.menu.addAction(rules_action)
+        self.rules_action = QAction(tr("tray.rules"), self.menu)
+        self.rules_action.triggered.connect(self.show_window)
+        self.menu.addAction(self.rules_action)
+
+        self.guide_action = QAction(tr("tray.show_guide"), self.menu)
+        self.guide_action.triggered.connect(self.show_guide)
+        self.menu.addAction(self.guide_action)
+
+        # Language submenu: same switch as the header globe, always reachable
+        # even when the dashboard window is closed to the tray.
+        self.language_menu = self.menu.addMenu(tr("tray.language"))
+        self._language_group = QActionGroup(self.menu)
+        self._language_group.setExclusive(True)
+        self._language_actions: dict[str, QAction] = {}
+        for code, name in language_choices():
+            action = QAction(name, self.menu)
+            action.setCheckable(True)
+            action.triggered.connect(lambda _=False, c=code: self._set_language(c))
+            self._language_group.addAction(action)
+            self.language_menu.addAction(action)
+            self._language_actions[code] = action
+        self._sync_language_checks()
 
         self.menu.addSeparator()
-        quit_action = QAction("Quit Time Manager", self.menu)
-        quit_action.triggered.connect(self._quit)
-        self.menu.addAction(quit_action)
+        self.quit_action = QAction(tr("tray.quit"), self.menu)
+        self.quit_action.triggered.connect(self._quit)
+        self.menu.addAction(self.quit_action)
 
     # ------------------------------------------------------------------ slots
     def _activated(self, reason) -> None:
@@ -71,6 +97,11 @@ class TrayController:
         self.window.raise_()
         self.window.activateWindow()
 
+    def show_guide(self) -> None:
+        """Run the guided tour (opening the dashboard first — the tour dims it)."""
+        self.show_window()
+        self.window.start_tour()
+
     def _pause(self, minutes: int) -> None:
         self.service.pause(minutes)
         self.update_status(self.service.snapshot())
@@ -78,6 +109,32 @@ class TrayController:
     def _resume(self) -> None:
         self.service.resume()
         self.update_status(self.service.snapshot())
+
+    def _set_language(self, code: str) -> None:
+        apply_language_for(self.service, code)
+
+    def _on_language_changed(self, _code: str) -> None:
+        self.retranslate_ui()
+
+    def retranslate_ui(self) -> None:
+        self.open_action.setText(tr("tray.open_dashboard"))
+        for minutes, action in self._pause_actions:
+            action.setText(tr("tray.minutes", minutes=minutes))
+        self.pause_menu.setTitle(tr("tray.pause_tracking"))
+        self.resume_action.setText(tr("tray.resume"))
+        self.rules_action.setText(tr("tray.rules"))
+        self.guide_action.setText(tr("tray.show_guide"))
+        self.language_menu.setTitle(tr("tray.language"))
+        self.quit_action.setText(tr("tray.quit"))
+        self._sync_language_checks()
+        self.update_status(self.service.snapshot())
+
+    def _sync_language_checks(self) -> None:
+        from app.i18n import current_language
+
+        active = current_language()
+        for code, action in self._language_actions.items():
+            action.setChecked(code == active)
 
     def _quit(self) -> None:
         from PySide6.QtWidgets import QApplication
@@ -93,7 +150,7 @@ class TrayController:
             text += f" · {viewmodel.format_duration(snapshot.pause_remaining_seconds)}"
         self.status_action.setText(text)
         self.resume_action.setEnabled(snapshot.paused)
-        self.icon.setToolTip(f"Time Manager — {text}\n{line}")
+        self.icon.setToolTip(tr("tray.tooltip", status=text, line=line))
         role_for_icon = role if role != "info" else "ok"
         self.icon.setIcon(app_icon(64, role=role_for_icon))
 

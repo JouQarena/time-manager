@@ -95,7 +95,9 @@ def test_entry_console_runs_and_exits_clean():
     env = {**os.environ, "PYTHONPATH": str(entry.parents[1])}
     proc = subprocess.run(
         [sys.executable, str(entry), "--version"],
-        capture_output=True, text=True, timeout=120, cwd=entry.parents[1], env=env,
+        capture_output=True, text=True, timeout=120, cwd=entry.parents[1],
+        encoding="utf-8", errors="replace",
+        env={**env, "PYTHONIOENCODING": "utf-8"},
     )
     assert proc.returncode == 0, proc.stderr
     assert "TimeManager" in proc.stdout or "1." in proc.stdout
@@ -145,3 +147,23 @@ def test_entry_tray_survives_missing_streams(tmp_path, monkeypatch):
     assert log.is_file()
     tray_stream.write("hello\n")  # a line-buffered file stream, not None
     assert "hello" in log.read_text(encoding="utf-8")
+
+
+def test_spec_builds_each_exe_from_its_own_entry_script():
+    """Regression: the tray exe must not be built from the CLI entry point.
+
+    The spec used to feed a single Analysis to both EXEs, so
+    `TimeManagerTray.exe` shipped the *console* program: double-clicking it
+    ran the CLI, which with no arguments prints `--help` and exits 0. In a
+    windowed build there is no stdout/stderr, so the help went nowhere and
+    the exe vanished in silence — no window, no dialog, no log — which is
+    exactly the "double-clicking TimeManagerTray.exe does nothing" report.
+    Each entry point now gets its own Analysis, pyz and scripts.
+    """
+    spec_source = (Path(__file__).resolve().parents[1] / "time-manager.spec").read_text(
+        encoding="utf-8"
+    )
+    assert 'analyze("entry_console.py")' in spec_source
+    assert 'analyze("entry_tray.py")' in spec_source  # was absent: dead entry file
+    assert "a_console.scripts" in spec_source
+    assert "a_tray.scripts" in spec_source

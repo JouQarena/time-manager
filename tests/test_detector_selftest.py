@@ -71,7 +71,9 @@ def test_plugin_report_is_honest(result):
 # ------------------------------------------------------------------- the CLI
 def test_cli_prints_a_transcript_and_exits_zero():
     proc = subprocess.run([sys.executable, "-m", "app.main", "--detector-selftest"],
-                          cwd=REPO, capture_output=True, text=True, timeout=300)
+                          cwd=REPO, capture_output=True, text=True, timeout=300,
+                          encoding="utf-8", errors="replace",
+                          env={**os.environ, "PYTHONIOENCODING": "utf-8"})
     assert proc.returncode == 0, proc.stderr
     assert "ALL PASS" in proc.stdout
     assert "[PASS] live match -> WAIT" in proc.stdout
@@ -80,7 +82,9 @@ def test_cli_prints_a_transcript_and_exits_zero():
 
 def test_cli_json_mode_is_machine_readable():
     proc = subprocess.run([sys.executable, "-m", "app.cli.detector_selftest", "--json"],
-                          cwd=REPO, capture_output=True, text=True, timeout=300)
+                          cwd=REPO, capture_output=True, text=True, timeout=300,
+                          encoding="utf-8", errors="replace",
+                          env={**os.environ, "PYTHONIOENCODING": "utf-8"})
     assert proc.returncode == 0
     payload = json.loads(proc.stdout)
     assert payload["ok"] is True

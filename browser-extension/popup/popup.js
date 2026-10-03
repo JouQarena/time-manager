@@ -120,6 +120,11 @@ document.getElementById("reconnect").addEventListener("click", () => {
 document.getElementById("options").addEventListener("click", () => {
   chrome.runtime.openOptionsPage();
 });
+document.getElementById("guide").addEventListener("click", () => {
+  // The guide is a page inside the extension; opening it in a tab keeps the
+  // popup from closing before the user reads two lines.
+  chrome.tabs.create({ url: chrome.runtime.getURL("guide/guide.html") });
+});
 
 ask();
 setInterval(ask, 2000);

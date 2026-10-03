@@ -223,24 +223,42 @@ def test_host_keeps_working_when_one_plugin_dies():
 def test_stats_reads_are_thread_safe():
     # A generous budget: this test proves concurrent stats reads are safe,
     # not budget timing — a loaded machine (or CI runner) must not turn a
-    # chance 200 ms trip into a quarantine and a flaky count.
+    # chance trip into a quarantine and a flaky count.
     host = DetectorHost(timeout_ms=10_000)
     managed = host.register(Plugin())
     errors: list[str] = []
+    calls = 200
 
-    def hammer():
+    # One probe thread, several readers. `probe()` is deliberately *not*
+    # concurrent: a call that arrives while the previous probe is still in
+    # flight is refused by the anti-wedge guard ("previous probe is still
+    # running") and never reaches `stats.calls`, so N threads probing at once
+    # record fewer than N calls — and five refusals in a row quarantine a
+    # perfectly healthy detector. Racing probes here made this test fail on a
+    # loaded machine; the thread-safety claim under test is about *reads*.
+    def hammer_probes() -> None:
         try:
-            for _ in range(50):
+            for _ in range(calls):
                 managed.probe(empty_probe())
-                host.status()
         except Exception as exc:  # noqa: BLE001
             errors.append(repr(exc))
 
-    threads = [threading.Thread(target=hammer) for _ in range(4)]
+    def hammer_reads() -> None:
+        try:
+            for _ in range(calls):
+                host.status()
+                host.summary()
+                managed.stats.consecutive_failures  # noqa: B018 - a live read
+        except Exception as exc:  # noqa: BLE001
+            errors.append(repr(exc))
+
+    threads = [threading.Thread(target=hammer_probes)]
+    threads += [threading.Thread(target=hammer_reads) for _ in range(3)]
     [t.start() for t in threads]
     [t.join() for t in threads]
     assert not errors
-    assert managed.stats.calls == 200
+    assert managed.stats.calls == calls          # every probe counted once
+    assert managed.stats.quarantined is False    # and none of them failed
 
 
 def test_registry_routing_prefers_the_most_specific_detector():

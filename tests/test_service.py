@@ -111,7 +111,7 @@ def test_second_instance_is_refused(tmp_path, foreign_pid):
     second, _, _ = build(tmp_path)
     try:
         first.start()
-        path.write_text(f"{foreign_pid}:0")  # a live, foreign owner
+        path.write_text(f"{foreign_pid}:0", encoding='utf-8')  # a live, foreign owner
         with pytest.raises(AgentAlreadyRunning) as exc:
             second.start()
         assert exc.value.pid == foreign_pid

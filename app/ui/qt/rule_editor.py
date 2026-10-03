@@ -33,14 +33,18 @@ from PySide6.QtWidgets import (
 
 from app.core.rules.models import Rule
 from app.core.types import Action, Mode, RuleType
+from app.i18n import tr
 from app.ui.qt.theme import PALETTE
 
-DAY_CHOICES = {
-    "Every day": "EVERYDAY",
-    "Weekdays (Mon–Fri)": "WEEKDAYS",
-    "Weekends (Sat–Sun)": "WEEKENDS",
-    "Custom…": "CUSTOM",
-}
+#: (catalog key, payload token). The combo shows `tr(key)` and stores the
+#: token, so the logic never compares translated text — that comparison was
+#: the first thing Arabic would have broken.
+DAY_CHOICES: tuple[tuple[str, str], ...] = (
+    ("schedule.every_day", "EVERYDAY"),
+    ("schedule.weekdays", "WEEKDAYS"),
+    ("schedule.weekends", "WEEKENDS"),
+    ("schedule.custom", "CUSTOM"),
+)
 DAY_TOKENS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
 
 
@@ -61,28 +65,20 @@ def presets() -> list[dict]:
 
 #: Honest per-game caveats for the "wait for the match to end" action, so the
 #: user picks the right behaviour before saving (Phase 8, docs/PHASE8.md).
-PRESET_CAVEATS = {
-    "valorant": " VALORANT's menu and match share one process, so 'wait' "
-                "means the limit applies once the game is closed. Pick Close "
-                "or Block instead if you want the limit immediately.",
-    "repo": " R.E.P.O. has no local menu/match signal, so 'wait' means the "
-            "limit applies once the game is closed. Pick Close or Block "
-            "instead if you want the limit immediately.",
-    "teamfight_tactics": " TFT shares its match process with League of "
-                         "Legends, so the limit waits while any League match "
-                         "is running (it never closes the wrong game).",
-}
-
-
+#: Honest per-game caveats for "wait for the match to end". They live in the
+#: catalog (`re.caveat.<detector id>`) so they are translated like everything
+#: else; an unknown detector simply has no caveat.
 def _preset_caveat(detector_id: str) -> str:
-    return PRESET_CAVEATS.get(detector_id, "")
+    key = f"re.caveat.{detector_id}"
+    text = tr(key)
+    return f" {text}" if text != key else ""
 
 
 class RuleDialog(QDialog):
     def __init__(self, rule: Rule | None = None, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.existing = rule
-        self.setWindowTitle("Edit rule" if rule else "New rule")
+        self.setWindowTitle(tr("re.title_edit") if rule else tr("re.title_new"))
         # Short screens (e.g. 1366x768 at 125% scaling leave ~610 logical
         # pixels): the form scrolls instead of pushing Save off-screen, and
         # the dialog shrinks as far as the user wants.
@@ -102,51 +98,50 @@ class RuleDialog(QDialog):
         scroll.setWidget(content)
 
         # ------------------------------------------------------------- basics
-        basics = QGroupBox("What to limit")
+        basics = QGroupBox(tr("re.group_basics"))
         form = QFormLayout(basics)
         form.setSpacing(8)
 
         self.name = QLineEdit(rule.name if rule else "")
-        self.name.setPlaceholderText("e.g. Discord, League of Legends, YouTube")
-        form.addRow("Name", self.name)
+        self.name.setPlaceholderText(tr("re.name_placeholder"))
+        form.addRow(tr("re.name"), self.name)
 
         self.type_combo = QComboBox()
-        for rule_type, text in (
-            (RuleType.APPLICATION, "Application (exe)"),
-            (RuleType.GAME, "Game"),
-            (RuleType.WEBSITE, "Website (domain)"),
+        for rule_type, key in (
+            (RuleType.APPLICATION, "re.type_app"),
+            (RuleType.GAME, "re.type_game"),
+            (RuleType.WEBSITE, "re.type_website"),
         ):
-            self.type_combo.addItem(text, rule_type)
+            self.type_combo.addItem(tr(key), rule_type)
         self.type_combo.currentIndexChanged.connect(self._type_changed)
-        form.addRow("Type", self.type_combo)
+        form.addRow(tr("re.type"), self.type_combo)
 
         # Known games come from the detector registry, so users never have to
         # guess process names (and a plugin can add its own to this list).
         known_games = presets()
         self.game_combo = QComboBox()
-        self.game_combo.addItem("Choose a known game…", None)
+        self.game_combo.addItem(tr("re.pick_game"), None)
         for preset in known_games:
             self.game_combo.addItem(preset.get("name") or preset.get("id"), preset)
         self.game_combo.currentIndexChanged.connect(self._game_preset_chosen)
         self.game_combo.setVisible(bool(known_games))
-        form.addRow("Known game", self.game_combo)
+        form.addRow(tr("re.known_game"), self.game_combo)
 
         target_row = QHBoxLayout()
         self.target = QLineEdit()
-        self.target.setPlaceholderText("discord.exe  •  league of legends.exe  •  youtube.com")
+        self.target.setPlaceholderText(tr("re.target_placeholder"))
         target_row.addWidget(self.target, 1)
-        self.browse = QPushButton("Browse…")
+        self.browse = QPushButton(tr("re.browse"))
         self.browse.setObjectName("Ghost")
         self.browse.clicked.connect(self._browse)
         target_row.addWidget(self.browse)
         holder = QWidget()
         holder.setLayout(target_row)
-        form.addRow("Target", holder)
+        form.addRow(tr("re.target"), holder)
 
         self.extra = QLineEdit()
-        self.extra.setPlaceholderText("optional: extra exes, comma-separated "
-                                      "(launcher, helper processes)")
-        form.addRow("Also match", self.extra)
+        self.extra.setPlaceholderText(tr("re.also_match_placeholder"))
+        form.addRow(tr("re.also_match"), self.extra)
 
         self.hint = QLabel()
         self.hint.setWordWrap(True)
@@ -155,11 +150,11 @@ class RuleDialog(QDialog):
         form_column.addWidget(basics)
 
         # ------------------------------------------------------------- limits
-        limits = QGroupBox("Limits")
+        limits = QGroupBox(tr("re.group_limits"))
         form2 = QFormLayout(limits)
         form2.setSpacing(8)
 
-        self.daily_enabled = QCheckBox("Daily limit")
+        self.daily_enabled = QCheckBox(tr("re.daily"))
         self.daily_minutes = QSpinBox()
         self.daily_minutes.setRange(1, 24 * 60)
         self.daily_minutes.setSuffix(" min")
@@ -170,7 +165,7 @@ class RuleDialog(QDialog):
         daily_holder.setLayout(daily_row)
         form2.addRow("", daily_holder)
 
-        self.session_enabled = QCheckBox("Per-session limit")
+        self.session_enabled = QCheckBox(tr("re.session"))
         self.session_minutes = QSpinBox()
         self.session_minutes.setRange(1, 24 * 60)
         self.session_minutes.setSuffix(" min")
@@ -182,37 +177,38 @@ class RuleDialog(QDialog):
         form2.addRow("", session_holder)
 
         self.warnings = QLineEdit("10, 5, 2")
-        self.warnings.setPlaceholderText("minutes before the limit, comma-separated")
-        form2.addRow("Warn me", self.warnings)
+        self.warnings.setPlaceholderText(tr("re.warn_placeholder"))
+        form2.addRow(tr("re.warn_me"), self.warnings)
 
         self.action_combo = QComboBox()
-        form2.addRow("When the limit is reached", self.action_combo)
+        form2.addRow(tr("re.when_limit"), self.action_combo)
 
         self.mode_combo = QComboBox()
-        self.mode_combo.addItem("Normal — instances already running may finish", Mode.NORMAL)
-        self.mode_combo.addItem("Strict — close/block immediately and on relaunch", Mode.STRICT)
-        form2.addRow("Mode", self.mode_combo)
+        self.mode_combo.addItem(tr("re.mode_normal"), Mode.NORMAL)
+        self.mode_combo.addItem(tr("re.mode_strict"), Mode.STRICT)
+        form2.addRow(tr("re.mode"), self.mode_combo)
         form_column.addWidget(limits)
 
         # ----------------------------------------------------------- schedule
-        schedule_box = QGroupBox("Schedule")
+        schedule_box = QGroupBox(tr("re.group_schedule"))
         form3 = QFormLayout(schedule_box)
-        self.always = QCheckBox("Always active")
+        self.always = QCheckBox(tr("re.always"))
         self.always.setChecked(True)
         self.always.toggled.connect(self._schedule_toggled)
         form3.addRow("", self.always)
 
         self.days_combo = QComboBox()
-        self.days_combo.addItems(DAY_CHOICES)
+        for key, token in DAY_CHOICES:
+            self.days_combo.addItem(tr(key), token)
         self.days_combo.currentIndexChanged.connect(self._schedule_toggled)
-        form3.addRow("Days", self.days_combo)
+        form3.addRow(tr("re.days"), self.days_combo)
 
         self.custom_days = QWidget()
         custom_row = QHBoxLayout(self.custom_days)
         custom_row.setContentsMargins(0, 0, 0, 0)
         self.day_boxes: dict[str, QCheckBox] = {}
         for token in DAY_TOKENS:
-            box = QCheckBox(token.title())
+            box = QCheckBox(tr(f"day.{token}"))
             self.day_boxes[token] = box
             custom_row.addWidget(box)
         form3.addRow("", self.custom_days)
@@ -222,10 +218,10 @@ class RuleDialog(QDialog):
         self.start_time.setDisplayFormat("HH:mm")
         self.end_time = QTimeEdit(QTime(22, 0))
         self.end_time.setDisplayFormat("HH:mm")
-        self.window_enabled = QCheckBox("Only between")
+        self.window_enabled = QCheckBox(tr("re.only_between"))
         window_row.addWidget(self.window_enabled)
         window_row.addWidget(self.start_time)
-        window_row.addWidget(QLabel("and"))
+        window_row.addWidget(QLabel(tr("fmt.and")))
         window_row.addWidget(self.end_time)
         window_row.addStretch(1)
         window_holder = QWidget()
@@ -284,13 +280,13 @@ class RuleDialog(QDialog):
             self.always.setChecked(False)
             days = rule.schedule.days
             if days is None or len(days) == 7:
-                self.days_combo.setCurrentText("Every day")
+                self._select_days("EVERYDAY")
             elif days == frozenset({"MON", "TUE", "WED", "THU", "FRI"}):
-                self.days_combo.setCurrentText("Weekdays (Mon–Fri)")
+                self._select_days("WEEKDAYS")
             elif days == frozenset({"SAT", "SUN"}):
-                self.days_combo.setCurrentText("Weekends (Sat–Sun)")
+                self._select_days("WEEKENDS")
             else:
-                self.days_combo.setCurrentText("Custom…")
+                self._select_days("CUSTOM")
                 for token in days:
                     if token in self.day_boxes:
                         self.day_boxes[token].setChecked(True)
@@ -311,11 +307,10 @@ class RuleDialog(QDialog):
         self.type_combo.setCurrentIndex(self.type_combo.findData(RuleType.GAME))
         self.target.setText(str(executables[0]))
         self.extra.setText(", ".join(str(e) for e in executables[1:]))
-        if self.name.text().strip() in ("", "New rule"):
+        if self.name.text().strip() in ("", tr("re.title_new")):
             self.name.setText(str(preset.get("name") or preset.get("id")))
         self.hint.setText(
-            f"{preset.get('name')} is watched by the '{preset.get('id')}' game detector: "
-            "the limit can wait for a match to end instead of interrupting it."
+            tr("re.preset_hint", name=preset.get("name"), id=preset.get("id"))
             + _preset_caveat(str(preset.get("id")))
         )
 
@@ -330,43 +325,46 @@ class RuleDialog(QDialog):
             "youtube.com" if is_site else
             ("league of legends.exe" if rule_type == RuleType.GAME else "discord.exe")
         )
-        self.hint.setText({
-            RuleType.WEBSITE: "Domains only, e.g. youtube.com — subdomains count too. "
-                              "Blocks are enforced by the browser extension.",
-            RuleType.GAME: "The game's main executable. Limits can wait for a match to "
-                           "finish when the game detector knows the session state.",
-            RuleType.APPLICATION: "The process name as Task Manager shows it, e.g. "
-                                  "discord.exe. Closing is graceful first (WM_CLOSE).",
-        }[rule_type])
+        self.hint.setText(tr({
+            RuleType.WEBSITE: "re.hint_website",
+            RuleType.GAME: "re.hint_game",
+            RuleType.APPLICATION: "re.hint_app",
+        }[rule_type]))
 
         # actions valid for this type
         current = self.action_combo.currentData()
         self.action_combo.clear()
         if is_site:
-            self.action_combo.addItem("Block the site in the browser", Action.BLOCK)
-            self.action_combo.addItem("Only warn me", Action.WARN_ONLY)
+            self.action_combo.addItem(tr("re.action_block_site"), Action.BLOCK)
+            self.action_combo.addItem(tr("re.action_warn"), Action.WARN_ONLY)
         else:
             if rule_type == RuleType.GAME:
-                self.action_combo.addItem("Wait for the match to end, then close",
+                self.action_combo.addItem(tr("re.action_wait"),
                                           Action.WAIT_FOR_SESSION_END)
-            self.action_combo.addItem("Close the app", Action.CLOSE)
-            self.action_combo.addItem("Prevent launching it", Action.BLOCK)
-            self.action_combo.addItem("Only warn me", Action.WARN_ONLY)
+            self.action_combo.addItem(tr("re.action_close"), Action.CLOSE)
+            self.action_combo.addItem(tr("re.action_prevent"), Action.BLOCK)
+            self.action_combo.addItem(tr("re.action_warn"), Action.WARN_ONLY)
         index = self.action_combo.findData(current) if current else -1
         if index >= 0:
             self.action_combo.setCurrentIndex(index)
+
+    def _select_days(self, token: str) -> None:
+        """Select a days-combo entry by its payload token (never by text)."""
+        index = self.days_combo.findData(token)
+        if index >= 0:
+            self.days_combo.setCurrentIndex(index)
 
     def _schedule_toggled(self) -> None:
         enabled = not self.always.isChecked()
         for widget in (self.days_combo, self.window_enabled, self.start_time,
                        self.end_time, self.custom_days):
             widget.setEnabled(enabled)
-        self.custom_days.setVisible(enabled and self.days_combo.currentText() == "Custom…")
+        self.custom_days.setVisible(enabled and self.days_combo.currentData() == "CUSTOM")
 
     def _browse(self) -> None:
         start = os.environ.get("WINDIR", "") or os.path.expanduser("~")
         path, _ = QFileDialog.getOpenFileName(
-            self, "Pick the application", start, "Executables (*.exe);;All files (*)"
+            self, tr("re.pick_app_title"), start, tr("re.pick_app_filter")
         )
         if not path:
             return
@@ -398,7 +396,7 @@ class RuleDialog(QDialog):
         payload: dict = {"days": days}
         if self.window_enabled.isChecked():
             if self.start_time.time() == self.end_time.time():
-                raise ValueError("The window start and end must differ.")
+                raise ValueError(tr("re.err_window_order"))
             payload["windows"] = [[
                 self.start_time.time().toString("HH:mm"),
                 self.end_time.time().toString("HH:mm"),
@@ -410,15 +408,15 @@ class RuleDialog(QDialog):
         rule_type: RuleType = self.type_combo.currentData()
         target = self.target.text().strip()
         if not target:
-            raise ValueError("Give the rule a target (exe name or domain).")
+            raise ValueError(tr("re.err_need_target"))
         if not self.name.text().strip():
-            raise ValueError("Give the rule a name.")
+            raise ValueError(tr("re.err_need_name"))
 
         daily = self.daily_minutes.value() * 60 if self.daily_enabled.isChecked() else None
         session = (self.session_minutes.value() * 60
                    if self.session_enabled.isChecked() else None)
         if daily is None and session is None:
-            raise ValueError("Set a daily limit, a session limit, or both.")
+            raise ValueError(tr("re.err_need_limits"))
 
         extra = tuple(
             part.strip() for part in self.extra.text().split(",") if part.strip()
@@ -453,16 +451,26 @@ class RuleDialog(QDialog):
         # A rule that passes validation is stored by the caller; show a summary
         # so the user sees exactly what was accepted.
         self.error.setVisible(False)
+        from app.ui.viewmodel import action_label
+
         QMessageBox.information(
-            self, "Rule saved",
-            f"{rule.name}\n\n"
-            f"{rule.type.value.title()} · {rule.target}\n"
-            f"Daily: {self._minutes_text(rule.daily_limit_seconds)} · "
-            f"Session: {self._minutes_text(rule.session_limit_seconds)}\n"
-            f"Action: {rule.action.value} · Mode: {rule.mode.value}",
+            self, tr("re.saved_title"),
+            tr(
+                "re.saved_body",
+                name=rule.name,
+                type=tr(f"type.{rule.type.value.lower()}"),
+                target=rule.target,
+                daily=self._minutes_text(rule.daily_limit_seconds),
+                session=self._minutes_text(rule.session_limit_seconds),
+                action=action_label(rule),
+                mode=(tr("re.mode_strict_short") if rule.mode == Mode.STRICT
+                      else tr("re.mode_normal_short")),
+            ),
         )
         self.accept()
 
     @staticmethod
     def _minutes_text(seconds: int | None) -> str:
-        return "none" if seconds is None else f"{seconds // 60} min"
+        if seconds is None:
+            return tr("re.none")
+        return tr("re.minutes", minutes=seconds // 60)

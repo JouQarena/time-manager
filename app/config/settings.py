@@ -16,6 +16,8 @@ import secrets
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+from app.i18n import normalize_language
+
 log = logging.getLogger(__name__)
 
 APP_NAME = "TimeManager"
@@ -24,7 +26,11 @@ IPC_DEFAULT_PORT = 17846
 
 def app_dir() -> Path:
     if os.name == "nt":
-        base = Path(os.environ.get("APPDATA", str(Path.home() / "AppData/Roaming")))
+        # `os.environ.get(..., default)` would evaluate Path.home() even when
+        # APPDATA is set — pointless, and it can raise on a profile with no
+        # resolvable home directory.
+        appdata = os.environ.get("APPDATA")
+        base = Path(appdata) if appdata else Path.home() / "AppData" / "Roaming"
         return base / APP_NAME
     xdg = os.environ.get("XDG_CONFIG_HOME")
     base = Path(xdg) if xdg else Path.home() / ".config"
@@ -74,6 +80,11 @@ class AppSettings:
         # Windows machine ran pytest while its own agent was running).
         if self.theme not in ("system", "light", "dark"):
             raise ValueError("theme must be system|light|dark.")
+        # `language` comes from a hand-editable config file, so it is *normalized*
+        # rather than validated: raising here would send load_settings() down its
+        # defaults path and silently discard every other setting the user chose.
+        # Anything not shipped resolves to English (app/i18n.DEFAULT_LANGUAGE).
+        self.language = normalize_language(self.language)
         if self.ipc_port != 0 and not 1024 <= self.ipc_port <= 65535:
             raise ValueError("ipc_port must be 1024..65535 (or 0: OS chooses).")
 

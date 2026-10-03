@@ -89,7 +89,7 @@ def test_player_log_freshness_is_detail_only(tmp_path):
 
     clock = FakeClock()
     log_file = tmp_path / "Player.log"
-    log_file.write_text("unity spam\n")
+    log_file.write_text("unity spam\n", encoding='utf-8')
     stamp = clock.wall()
     os.utime(log_file, (stamp, stamp))
     d = detector(tmp_path, clock)

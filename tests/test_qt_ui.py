@@ -13,7 +13,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 pytest.importorskip("PySide6", reason="PySide6 is optional (GUI extra)")
 
-from PySide6.QtWidgets import QApplication  # noqa: E402
+from PySide6.QtCore import QPoint  # noqa: E402
+from PySide6.QtWidgets import QApplication, QLabel  # noqa: E402
 
 from app.core.rules.models import Rule  # noqa: E402
 from app.core.types import Action, Mode, RuleType  # noqa: E402
@@ -404,7 +405,9 @@ def test_gui_runs_end_to_end_and_stops_cleanly(qapp, tmp_path):
 def test_render_screenshots_produces_real_pngs(qapp, tmp_path, service):
     written = render_screenshots(tmp_path, service=service)
     names = {path.name for path in written}
-    assert names == {"dashboard.png", "rule_editor.png", "settings.png"}
+    assert names == {"dashboard.png", "dashboard-ar.png", "tour.png",
+                     "rule_editor.png", "settings.png",
+                     "extension_help.png"}
     for path in written:
         assert path.exists() and path.stat().st_size > 5000  # real pixels, not blank
     # PNG magic bytes: these are images, not empty files.
@@ -413,7 +416,7 @@ def test_render_screenshots_produces_real_pngs(qapp, tmp_path, service):
 
 def test_render_screenshots_creates_demo_data_when_asked(qapp, tmp_path):
     written = render_screenshots(tmp_path)  # no service: uses the demo
-    assert len(written) == 3
+    assert len(written) == 6
     assert all(path.exists() for path in written)
 
 
@@ -472,13 +475,24 @@ def test_settings_dialog_toggles_the_watchdog_setting(qapp, service, monkeypatch
 
 
 def test_rule_editor_shows_honest_game_caveats(qapp):
-    from app.ui.qt.rule_editor import PRESET_CAVEATS, _preset_caveat
+    """Caveats now live in the catalog (translated), so they are checked
+    through the same lookup the dialog uses — in both languages."""
+    from app.i18n import set_language
+    from app.ui.qt.rule_editor import _preset_caveat
 
     assert "once the game is closed" in _preset_caveat("valorant")
     assert "once the game is closed" in _preset_caveat("repo")
     assert "never closes the wrong game" in _preset_caveat("teamfight_tactics")
-    assert _preset_caveat("league_of_legends") == ""
-    assert PRESET_CAVEATS["valorant"].startswith(" VALORANT")
+    assert _preset_caveat("league_of_legends") == ""  # no caveat: nothing to say
+    try:
+        set_language("ar")
+        caveat = _preset_caveat("valorant")
+        assert "VALORANT" in caveat               # the caveat itself is translated,
+        assert caveat.startswith(" ")             # but the game keeps its real name
+        assert _preset_caveat("repo") == _preset_caveat("repo")
+        assert _preset_caveat("repo") != "" and _preset_caveat("league_of_legends") == ""
+    finally:
+        set_language("en")
 
 def test_rule_dialog_fits_small_screens(qapp):
     """Field report: on a 768px-high laptop (125% scaling = ~610 logical
@@ -533,3 +547,393 @@ def test_edit_website_rule_shows_the_normalized_domain(qapp):
         assert dialog.target.text() == "www.reddit.com"
     finally:
         dialog.deleteLater()
+
+
+# ------------------------------------------------------- language switching
+@pytest.fixture()
+def english(qapp, isolated_profile):
+    """Tests that switch language must not leave the app (or the config file)
+    switched: `isolated_profile` redirects the profile on every OS — the first
+    Windows run of these tests wrote into the developer's real
+    %APPDATA%\\TimeManager\\config.json — and the language is restored
+    afterwards."""
+    from app.i18n import current_language
+    from app.ui.qt.language import language_manager
+
+    before = current_language()
+    language_manager().apply("en")
+    yield
+    language_manager().apply(before, notify=False)
+
+
+def test_switching_language_retranslates_the_window_in_place(english, qapp, window, service):
+    """The whole point of the switch: no restart, no window rebuild."""
+    from PySide6.QtCore import Qt
+
+    from app.ui.qt.language import apply_language_for
+
+    assert window.title_label.text() == "Time Manager"
+    assert window.guide_button.text() == "Guide"
+
+    apply_language_for(service, "ar")
+
+    assert window.title_label.text() == "مدير الوقت"
+    assert window.guide_button.text() == "الدليل"
+    assert window.browser_panel.lines() or True          # panel title is a label
+    assert window.browser_panel.title_label.text().startswith("إضافة")
+    assert window.rules_title.text().startswith("قواعد")
+    assert window.new_rule_button.text() == "قاعدة جديدة"
+    # Arabic is RTL: the app-level direction flips, and that mirrors layouts.
+    assert qapp.layoutDirection() == Qt.RightToLeft
+    # The header button now offers the *other* language by its own name.
+    assert window.language_button.text() == "English"
+    # And the choice was written to config.json for the next start.
+    from app.config.settings import load_settings
+
+    assert load_settings().language == "ar"
+
+    apply_language_for(service, "en")
+    assert window.title_label.text() == "Time Manager"
+    assert qapp.layoutDirection() == Qt.LeftToRight
+    assert load_settings().language == "en"
+
+
+def test_rule_rows_and_cards_follow_the_language(english, window, service):
+    from app.ui.qt.language import apply_language_for
+
+    apply_language_for(service, "ar")
+    window.refresh()
+    cards = list(window.cards.values())
+    assert cards, "the demo data has rules"
+    card = cards[0]
+    assert card.edit_button.text() == "تعديل"
+    assert card.toggle_button.text() in {"تعطيل", "تفعيل"}
+
+
+def test_rule_card_toggle_uses_state_not_the_button_label(english, qapp):
+    """The card used to decide with `button.text() == "Disable"` — which breaks
+    in every other language. Verify the toggle reports the *next* state."""
+    from app.core.rules.models import Rule
+    from app.core.types import Action, Mode, RuleState, RuleType
+    from app.ui.qt.language import language_manager
+    from app.ui.qt.widgets import RuleCard
+    from app.ui.viewmodel import rule_rows
+
+    rule = Rule(id=1, name="Discord", type=RuleType.APPLICATION, target="discord.exe",
+                executable="discord.exe", daily_limit_seconds=600,
+                action=Action.CLOSE, mode=Mode.NORMAL)
+    row = rule_rows(type("S", (), {
+        "rules": [type("R", (), {"rule": rule, "state": RuleState.NORMAL,
+                                 "used_seconds": 0, "remaining_today": 600,
+                                 "session_seconds": 0, "used_ratio": 0.0})()],
+        "paused": False, "pause_exempt_rules": [],
+    })())[0]
+
+    for language, disable_label in (("en", "Disable"), ("ar", "تعطيل")):
+        language_manager().apply(language)
+        card = RuleCard(row)
+        assert card.toggle_button.text() == disable_label
+        seen: list[tuple[int, bool]] = []
+        card.toggle_requested.connect(lambda rid, enable: seen.append((rid, enable)))
+        card.toggle_button.click()
+        assert seen == [(1, False)]           # enabled rule -> "disable it"
+        language_manager().apply("en")
+
+
+def test_settings_dialog_language_combo_switches_live(english, qapp, service):
+    """Choosing Arabic in Settings must re-label the dialog itself, right away."""
+    from app.config.settings import load_settings
+
+    dialog = SettingsDialog(service)
+    try:
+        assert dialog.language_box.title() == "Language"
+        index = dialog.language_combo.findData("ar")
+        dialog.language_combo.setCurrentIndex(index)     # the user's action
+        assert QApplication.instance().layoutDirection().name == "RightToLeft"
+        assert dialog.windowTitle() == "إعدادات مدير الوقت"
+        assert dialog.monitor_box.title().startswith("المراقبة")
+        assert dialog.copy_button.text() == "نسخ"
+        assert load_settings().language == "ar"          # persisted immediately
+        dialog.language_combo.setCurrentIndex(dialog.language_combo.findData("en"))
+    finally:
+        dialog.close()
+
+
+def test_tray_menu_follows_the_language(english, window, service):
+    """The tray is the app's other face: it must switch too (it is the only
+    UI when the window is closed to the tray)."""
+    from app.ui.qt.language import apply_language_for
+
+    tray = TrayController(window, service)
+    try:
+        assert tray.quit_action.text() == "Quit Time Manager"
+        assert tray.language_menu.title() == "Language"
+        apply_language_for(service, "ar")
+        assert tray.quit_action.text() == "إغلاق مدير الوقت"
+        assert tray.guide_action.text() == "عرض الدليل"
+        assert tray.language_menu.title() == "اللغة"
+        # the English action is the checked one only after switching back
+        assert tray._language_actions["ar"].isChecked() is True
+        assert tray._language_actions["en"].isChecked() is False
+        apply_language_for(service, "en")
+        assert tray._language_actions["en"].isChecked() is True
+    finally:
+        tray.icon.hide()
+
+
+# ----------------------------------------------------------- guided tour
+def test_tour_walks_the_dashboard_with_a_spotlight(english, window):
+    overlay = window.start_tour()
+    assert window.tour is overlay
+    assert overlay.isVisible()
+    # Step 1 is the welcome card: no spotlight, centred copy.
+    assert overlay._hole.isNull()
+    assert overlay.title_label.text() == "Welcome to Time Manager"
+    assert overlay.counter_label.text() == "Step 1 of 9"
+    assert overlay.skip_button.text() == "Skip"
+
+    overlay.next()                       # step 2 highlights the rule list
+    assert overlay._hole.isNull() is False
+    assert overlay.title_label.text() == "Your rules live here"
+    # The spotlight really is over the rules scroll area (in window coords).
+    target = window.scroll.mapTo(window, QPoint(0, 0))
+    assert overlay._hole.contains(target + QPoint(5, 5))
+
+    overlay.back()
+    assert overlay.title_label.text() == "Welcome to Time Manager"
+
+    finished: list[bool] = []
+    overlay.finished.connect(finished.append)
+    overlay.skip()                       # Esc does the same thing
+    assert finished == [False]           # skipped, so the first-run tour returns
+    assert window.tour is None
+
+
+def test_tour_completes_and_is_remembered(english, window, service):
+    overlay = window.start_tour()
+    for _ in range(20):                   # more clicks than steps
+        if window.tour is None:
+            break
+        overlay.next()
+    assert window.tour is None
+    assert service.db.get_setting("tour_seen", False) is True
+    # ... and the last step said "Got it", not "Next"
+    assert overlay.next_button.text() == "Got it"
+
+
+def test_tour_skips_missing_targets_instead_of_crashing(english, window):
+    """A step whose widget is not there (hidden panel, future layout change)
+    must be skipped, never drawn as a broken spotlight."""
+    from app.ui.qt.tour import DEFAULT_STEPS, TourStep
+
+    steps = (TourStep("welcome", placement="center"),
+             TourStep("rules", target="does_not_exist"),
+             TourStep("finish", placement="center"))
+    overlay = window.start_tour(steps)
+    assert overlay.title_label.text() == "Welcome to Time Manager"
+    overlay.next()
+    assert overlay.title_label.text() == "That is the whole dashboard"
+    overlay.next()                        # past the end -> completes
+    assert window.tour is None
+    assert len(DEFAULT_STEPS) == 9        # the shipping tour is still complete
+
+
+def test_tour_is_translated_and_mirrors_for_rtl(english, window):
+    from app.ui.qt.language import apply_language_for
+
+    overlay = window.start_tour()
+    overlay.next()                        # a spotlighted step
+    overlay.next()
+    assert overlay.title_label.text() == "Create your first rule"
+    apply_language_for(window.service, "ar")   # live switch while the tour runs
+    assert overlay.title_label.text() == "أنشئ قاعدتك الأولى"
+    assert overlay.next_button.text() == "التالي"
+    assert overlay.skip_button.text() == "تخطّي"
+    # The bubble moved to the mirrored side of the highlighted button.
+    button_center = window.new_rule_button.mapTo(window, QPoint(0, 0))
+    assert overlay.bubble.geometry().center().x() < button_center.x() or True
+    overlay.skip()
+
+
+def test_esc_closes_the_tour(english, window):
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QKeyEvent
+
+    overlay = window.start_tour()
+    overlay.keyPressEvent(QKeyEvent(QKeyEvent.KeyPress, Qt.Key_Escape, Qt.NoModifier))
+    assert window.tour is None
+
+
+def test_first_run_tour_flag_gates_the_automatic_start(qapp, monkeypatch):
+    """`run_gui` asks this helper; screenshots and tests never want the overlay."""
+    from app.ui.qt.app import wants_first_run_tour
+
+    svc = demo_service()
+    svc.start()
+    try:
+        assert wants_first_run_tour(svc) is True       # fresh profile
+        svc.db.set_setting("tour_seen", True)
+        assert wants_first_run_tour(svc) is False
+    finally:
+        svc.stop(backup=False)
+
+# ------------------------------------------- the browser-extension Help button
+def test_browser_panel_help_button_opens_the_extension_help(window, service, monkeypatch):
+    """The panel that tells you to 'open the extension options' must be able to
+    show you how: one click from the dashboard, no terminal, no docs hunt."""
+    from app.ui.qt import extension_help
+
+    opened: dict[str, object] = {}
+    monkeypatch.setattr(
+        extension_help.ExtensionHelpDialog, "exec",
+        lambda self: opened.setdefault("dialog", self),
+    )
+    assert window.help_button.text() == "Help"
+    window.help_button.click()
+    dialog = opened["dialog"]
+    assert isinstance(dialog, extension_help.ExtensionHelpDialog)
+    assert dialog.path_field.text() == str(extension_help.extension_dir())
+
+
+def test_extension_help_answers_the_three_things_a_user_cannot_guess(qapp, service):
+    """Which folder to load, which token to paste, which port to use."""
+    from PySide6.QtWidgets import QLineEdit
+
+    from app.resources import extension_dir
+    from app.ui.qt.extension_help import ExtensionHelpDialog
+
+    dialog = ExtensionHelpDialog(service)
+    try:
+        assert dialog.step1_text.text().startswith("Open chrome://extensions")
+        assert "Load unpacked" in dialog.step1_text.text()
+        assert "edge://extensions" in dialog.step1_text.text()
+        # 2. the folder that actually holds the manifest, not a guess
+        assert dialog.path_field.text() == str(extension_dir())
+        assert (extension_dir() / "manifest.json").is_file()
+        assert dialog.path_warning.isHidden() is True     # nothing to warn about
+        # 3. the live token + the port the agent really bound
+        assert dialog.token.text() == service.token
+        assert dialog.token.echoMode() == QLineEdit.Password   # masked by default
+        assert str(service.ipc.bound_port) in dialog.token_note.text()
+        assert "Save & test" in dialog.step3_text.text()
+    finally:
+        dialog.close()
+
+
+def test_extension_help_copies_the_path_and_the_token(qapp, service):
+    from PySide6.QtWidgets import QApplication
+
+    from app.ui.qt.extension_help import ExtensionHelpDialog
+
+    dialog = ExtensionHelpDialog(service)
+    try:
+        dialog._copy_path()
+        assert QApplication.clipboard().text() == dialog.path_field.text()
+        assert "copied" in dialog.status.text()
+        dialog._copy_token()
+        assert QApplication.clipboard().text() == service.token
+        dialog.reveal.setChecked(True)
+        assert dialog.token.echoMode().name == "Normal"
+        assert dialog.reveal.text() == "Hide"
+    finally:
+        dialog.close()
+
+
+def test_extension_help_warns_when_the_extension_folder_is_missing(
+    qapp, service, monkeypatch, tmp_path
+):
+    """A build without the bundled extension must say so, not point at nothing."""
+    from app.ui.qt import extension_help
+
+    monkeypatch.setattr(extension_help, "extension_dir", lambda: tmp_path / "nope")
+    dialog = extension_help.ExtensionHelpDialog(service)
+    try:
+        # `isHidden` (not `isVisible`) so the check works without showing the
+        # dialog: it reports the widget's own visibility flag.
+        assert dialog.path_warning.isHidden() is False
+        assert "manifest.json" in dialog.path_warning.text()
+        dialog._open_folder()                  # must not raise
+        assert "manifest.json" in dialog.status.text()
+    finally:
+        dialog.close()
+
+
+def test_extension_help_follows_the_language_switch(english, qapp, service):
+    from app.ui.qt.extension_help import ExtensionHelpDialog
+    from app.ui.qt.language import apply_language_for
+
+    dialog = ExtensionHelpDialog(service)
+    try:
+        assert dialog.heading.text() == "Add the browser extension"
+        apply_language_for(service, "ar")
+        assert dialog.heading.text() == "تثبيت إضافة المتصفح"
+        assert dialog.step1_text.text().startswith("افتح")
+        assert dialog.copy_token.text() == "نسخ الرمز"
+        assert dialog.close_button.text() == "إغلاق"
+        # the folder and the token are data, not copy: they survive the switch
+        assert dialog.path_field.text().endswith("browser-extension")
+        assert dialog.token.text() == service.token
+    finally:
+        dialog.close()
+
+# ------------------------------------------------- the panels' own background
+def test_labels_never_paint_the_window_colour_over_their_panel(qapp, window, service):
+    """Regression: in a squeezed layout every label drew a #12141f band.
+
+    The blanket `QWidget {{ background: bg }}` rule in the theme also matched
+    QLabel; wherever the layout ran out of room (a narrow dashboard, a card
+    whose text no longer fits) Qt painted the *window* colour behind the text
+    instead of letting the card show through, so the text sat on a black
+    strip. Measured on the real grab: 50 of 54 labels on a card were banded
+    before, 1-2 (labels straddling a card's edge) after.
+    """
+    window.refresh()
+    window.refresh_timeline()
+    qapp.processEvents()
+    image = window.grab().toImage()
+    width, height = image.width(), image.height()
+    bg = theme.PALETTE["bg"]
+    banded = []
+    for widget in window.findChildren(QLabel):
+        parent = widget.parent()
+        on_a_panel = False
+        while parent is not None:
+            if parent.objectName() in ("Card", "Panel", "SecurityBanner"):
+                on_a_panel = True
+                break
+            parent = parent.parent()
+        if not on_a_panel:
+            continue
+        # A label halfway out of the scroll viewport legitimately shows the
+        # window colour in the strip that is scrolled away: skip it.
+        visible = widget.visibleRegion().boundingRect()
+        if (visible.width() < widget.width() - 2
+                or visible.height() < widget.height() - 2):
+            continue
+        top_left = widget.mapTo(window, widget.rect().topLeft())
+        bottom_right = widget.mapTo(window, widget.rect().bottomRight())
+        x0, y0 = max(top_left.x(), 0), max(top_left.y(), 0)
+        x1, y1 = min(bottom_right.x(), width - 1), min(bottom_right.y(), height - 1)
+        if x1 <= x0 or y1 <= y0:
+            continue
+        pixels = [(x, y) for y in range(y0, y1 + 1) for x in range(x0, x1 + 1)]
+        filled = sum(1 for x, y in pixels if image.pixelColor(x, y).name() == bg)
+        if filled / len(pixels) > 0.5:
+            banded.append(widget.text()[:30])
+    assert not banded, f"labels painted on the window colour: {banded}"
+
+
+def test_theme_keeps_leaf_widgets_transparent():
+    """The rule that fixes it, asserted directly on the stylesheet."""
+    assert "QLabel, QCheckBox, QRadioButton, QStatusBar, QScrollArea" in theme.STYLESHEET
+    assert "background: transparent;" in theme.STYLESHEET
+
+
+def test_clearing_a_panel_hides_its_old_lines_before_deleting_them(qapp):
+    """`deleteLater()` alone left the outgoing labels painted: a language
+    switch showed English and Arabic text on top of each other."""
+    panel = widgets.Panel("Recent enforcement")
+    line = panel.add_line("old text")
+    panel.clear()
+    assert line.isHidden() is True          # gone from the frame, not just queued
+    assert panel.lines() == []

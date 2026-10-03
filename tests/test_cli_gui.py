@@ -8,6 +8,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 
 import pytest
 
@@ -16,10 +17,37 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
+def _sandbox_env(profile: str) -> dict:
+    """Environment that points the *child* process's profile at `profile`.
+
+    Without this the CLI tests read and write the real user profile (the agent
+    token, a `config.json` the app creates on first read, backups). The child
+    is a separate interpreter, so a fixture cannot reach it — it has to be the
+    environment.
+    """
+    return {
+        **os.environ,
+        "HOME": profile,
+        "USERPROFILE": profile,
+        "APPDATA": profile,              # Windows
+        "XDG_CONFIG_HOME": profile,      # Linux/macOS
+    }
+
+
 def run_cli(args, **kw):
+    tmp = kw.pop("profile", None)
+    if tmp is None:
+        # Keep the temporary directory alive for the call, then drop it.
+        with tempfile.TemporaryDirectory(prefix="tm-cli-") as profile:
+            return run_cli(args, profile=profile, **kw)
+    env = {**_sandbox_env(str(tmp)), "PYTHONIOENCODING": "utf-8"}
+    env.update(kw.pop("env", {}))
     return subprocess.run(
         [sys.executable, "-m", "app.main", *args],
-        cwd=REPO, capture_output=True, text=True, timeout=300, **kw,
+        cwd=REPO, capture_output=True, text=True, timeout=300,
+        # Decode explicitly: the CLI prints em dashes and Arabic, and on a
+        # cp1252/ASCII machine the parent's locale would mangle or reject it.
+        encoding="utf-8", errors="replace", env=env, **kw,
     )
 
 
@@ -110,7 +138,8 @@ def test_gui_shot_writes_screenshots(tmp_path):
     result = run_cli(["--gui-shot", "--out", str(tmp_path)])
     assert result.returncode == 0, result.stderr
     paths = sorted(p.name for p in tmp_path.glob("*.png"))
-    assert paths == ["dashboard.png", "rule_editor.png", "settings.png"]
+    assert paths == ["dashboard-ar.png", "dashboard.png", "extension_help.png",
+                     "rule_editor.png", "settings.png", "tour.png"]
     assert "wrote" in result.stdout
     for name in paths:
         assert (tmp_path / name).stat().st_size > 5_000
@@ -217,7 +246,7 @@ def test_gui_source_has_no_hardcoded_localhost_client_calls():
     import pathlib
 
     for path in pathlib.Path(REPO, "app", "ui").rglob("*.py"):
-        text = path.read_text()
+        text = path.read_text(encoding="utf-8")
         # The dashboard reads state through the in-process service; a GUI that
         # dialled the loopback socket would double-count and race the bridge.
         assert "import websockets" not in text, f"{path} must not open its own link"

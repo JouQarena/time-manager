@@ -14,8 +14,10 @@ from pathlib import Path
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from app.service import AgentAlreadyRunning, AgentService
+from app.ui.qt.language import apply_saved_language, language_manager
 from app.ui.qt.main_window import MainWindow
 from app.ui.qt.rule_editor import RuleDialog
+from app.ui.qt.extension_help import ExtensionHelpDialog
 from app.ui.qt.settings_dialog import SettingsDialog
 from app.ui.qt.theme import STYLESHEET
 from app.ui.qt.tray import QtNotifier, TrayController
@@ -34,10 +36,28 @@ def create_app(argv: list[str] | None = None) -> QApplication:
     return app
 
 
+def wants_first_run_tour(service: AgentService) -> bool:
+    """True until the user has seen the guided tour through to the end.
+
+    Stored as a plain setting so it survives reinstalls of the app folder but
+    not a fresh profile — a new user gets the tour, everyone else never sees
+    it unless they ask for it (Guide button / tray menu).
+    """
+    try:
+        if service.db is None:
+            return False
+        return not bool(service.db.get_setting("tour_seen", False))
+    except Exception:  # noqa: BLE001 - a missing settings row must not block startup
+        return False
+
+
 def run_gui(db_path: str | None = None, *, notifier_out: list | None = None) -> int:
     """Start the agent + tray + dashboard. Returns the process exit code."""
     app = create_app()
     service = AgentService(db_path)
+    # Before any widget is built: the first paint must already be in the
+    # user's language and text direction.
+    apply_saved_language(service.settings)
     notifier = QtNotifier()
     service.set_notifier(notifier)
     notifier.set_enabled(service.settings.notifications_enabled)
@@ -51,7 +71,8 @@ def run_gui(db_path: str | None = None, *, notifier_out: list | None = None) -> 
         QMessageBox.critical(None, "Time Manager", f"Could not start:\n\n{exc}")
         return 1
 
-    window = MainWindow(service, tray=None)
+    window = MainWindow(service, tray=None,
+                        autostart_tour=wants_first_run_tour(service))
     tray = TrayController(window, service)
     notifier.tray = tray
     window.tray = tray
@@ -93,6 +114,17 @@ def render_screenshots(out_dir: str | Path, service: AgentService | None = None)
     window.grab().save(str(target))
     written.append(target)
 
+    # The guided tour, rendered by the shipping overlay (shadow + arrow).
+    overlay = window.start_tour()
+    app.processEvents()
+    overlay.next()          # step 2 spotlights the rule list
+    app.processEvents()
+    target = out / "tour.png"
+    window.grab().save(str(target))
+    written.append(target)
+    overlay.skip()
+    app.processEvents()
+
     editor = RuleDialog(None, parent=window)
     editor.name.setText("Steam")
     editor.target.setText("steam.exe")
@@ -118,6 +150,38 @@ def render_screenshots(out_dir: str | Path, service: AgentService | None = None)
     settings.grab().save(str(target))
     written.append(target)
     settings.close()
+
+    # The extension Help dialog behind the Browser extension panel's Help
+    # button: the folder and the token are masked here (the token is a
+    # machine secret — a screenshot must never carry a usable one).
+    help_dialog = ExtensionHelpDialog(service, parent=window)
+    help_dialog.resize(620, 560)
+    help_dialog.show()
+    app.processEvents()
+    target = out / "extension_help.png"
+    help_dialog.grab().save(str(target))
+    written.append(target)
+    help_dialog.close()
+
+    # Arabic: the same dashboard, switched language + RTL layout. Rendered
+    # from the live window so the docs cannot drift from the shipped strings.
+    from app.i18n import current_language
+
+    active = current_language()
+    try:
+        language_manager().apply("ar")
+        app.processEvents()
+        window.refresh()
+        window.refresh_timeline()
+        app.processEvents()
+        target = out / "dashboard-ar.png"
+        window.grab().save(str(target))
+        written.append(target)
+    finally:
+        # Never leave the process (or the test suite) in a switched state.
+        language_manager().apply(active, notify=False)
+        window.refresh()
+        app.processEvents()
 
     window.hide()
     if owns_service:

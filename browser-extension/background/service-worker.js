@@ -333,9 +333,16 @@ function broadcastBadge() {
 }
 
 // ------------------------------------------------------------------ listeners
-chrome.runtime.onInstalled.addListener(() => {
+chrome.runtime.onInstalled.addListener((details) => {
   chrome.alarms.create(STATE_ALARM, { periodInMinutes: 1 });
   ensureConnected(true);
+  // Fresh install (not an update/reload): open the guide once. It is a local
+  // page inside the extension — no network, nothing fetched — and it tells the
+  // user the one thing that is not obvious: the desktop app must be running
+  // and the pairing token pasted before any website rule does anything.
+  if (details && details.reason === "install") {
+    chrome.tabs.create({ url: chrome.runtime.getURL("guide/guide.html") });
+  }
 });
 
 chrome.runtime.onStartup.addListener(() => {

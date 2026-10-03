@@ -58,7 +58,7 @@ app/windows/          Win32 adapters: foreground, power, startup, watchdog
 app/ui/viewmodel.py   Qt-free presentation logic (every word the UI shows)
 app/ui/qt/            widgets/dialogs/tray — thin over the viewmodel
 app/testing/fakes.py  FakeProcessSource/Controller — used by tests AND --simulate
-tests/                542 tests; naming: test_<module or feature>.py
+tests/                597 tests; naming: test_<module or feature>.py
 browser-extension/    MV3 extension (Chrome/Edge first)
 docs/                 architecture + per-phase records + user guides
 packaging/ installer/ scripts/   Phase 9 build tooling
@@ -68,7 +68,7 @@ Dependency direction (enforced by convention, watch it in review):
 `ui/qt -> ui/viewmodel -> service -> core -> database`. `windows/` and `ipc/`
 are adapters called by core services, never the reverse. Pure logic (state
 machine, policy, matching, scheduling) never imports I/O modules — that is
-what makes 542 fast tests possible.
+what makes 597 fast tests possible.
 
 ## 4. Test strategy
 

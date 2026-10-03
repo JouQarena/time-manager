@@ -40,7 +40,7 @@ py -3.12 -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
 python -m app.main --gui          # the desktop app: tray + dashboard
-pytest -q                         # 542 tests, ~30 s, any OS
+pytest -q                         # 597 tests, ~30 s, any OS
 ```
 
 `setup.bat` flags: `--fresh` rebuilds the venv, `--build` also installs the
@@ -57,7 +57,13 @@ window, tray, startup) are guarded and fail with a clear message elsewhere.
 `python -m app.main --simulate` plays a deterministic 40-minute demo on a fake
 machine — the fastest way to see enforcement happen.
 
-**Connect the browser extension (once):**
+**Connect the browser extension (once):** full walkthrough with
+troubleshooting in **[docs/INSTALL-EXTENSION.md](docs/INSTALL-EXTENSION.md)**;
+
+In the app, **Browser extension ▸ Help** shows the same three steps with
+*this* install's extension folder and pairing token, each copyable —
+no terminal needed.
+the short version:
 
 ```bash
 python -m app.main --show-token             # pairing token for this machine
@@ -65,7 +71,8 @@ python -m app.main --show-extension-path    # where the extension lives
 ```
 
 1. `chrome://extensions` → Developer mode → **Load unpacked** → select the
-   `browser-extension/` folder (packaged builds: use `--show-extension-path`).
+   `browser-extension/` folder (packaged builds: use `--show-extension-path`;
+   the dashboard's *Guide* button points at it too).
 2. Extension **Options** → paste the token → Save & test.
 3. The agent badge clears when the link is live.
 
@@ -80,6 +87,9 @@ python -m app.main --show-extension-path    # where the extension lives
 | **Anti-bypass** | A killed agent reports the gap at the next start; opt-in Task-Scheduler watchdog revives it within a minute; clock-rollback and extension-silence detection; everything audited and visible (`--security`). |
 | **Safety** | Crash recovery, monotonic timing (clock edits can't distort usage), suspend-aware, protected system processes never touched, single instance per profile. |
 | **Dashboard** | Live usage bars, state chips, security banner, rule editor with process picker and known-game presets, time-boxed pause (1–480 min), dark/light themes. |
+| **Guided tour** | A built-in walkthrough (Guide button / tray menu) that dims the dashboard, spotlights one control at a time and points at it with an arrow. Runs once on a fresh install, never again unless asked. |
+| **Extension guide** | The extension ships its own in-browser guide (opens on first install, linked from its options and popup), alongside `docs/INSTALL-EXTENSION.md` and `docs/EXTENSION.md`. |
+| **Languages** | English (default) and **العربية** — switch from the header globe, the tray menu or Settings ▸ Language. Applies instantly (no restart), remembers the choice, and flips the whole UI right-to-left. |
 
 ## The CLI
 
@@ -151,7 +161,7 @@ time-manager/
 │   ├── ui/               # Qt-free viewmodel + PySide6 widgets
 │   └── testing/          # Fakes used by the simulator and the tests
 ├── browser-extension/    # Manifest V3 extension (Chrome/Edge)
-├── tests/                # pytest suite (542 tests)
+├── tests/                # pytest suite (597 tests)
 ├── docs/                 # Architecture, protocol, guides, phase records
 ├── packaging/            # PyInstaller entry scripts (console + tray)
 ├── installer/            # Optional Inno Setup script
@@ -189,9 +199,9 @@ first four, optional Riot-client match-granularity plugins.
 Rendered by the shipping code on a fake clock (`--gui-shot`), so they cannot
 drift from the UI:
 
-| Dashboard | Rule editor | Settings |
-| --- | --- | --- |
-| ![Dashboard](docs/screenshots/dashboard.png) | ![Rule editor](docs/screenshots/rule_editor.png) | ![Settings](docs/screenshots/settings.png) |
+| Dashboard | Rule editor | Settings | Extension help |
+| --- | --- | --- | --- |
+| ![Dashboard](docs/screenshots/dashboard.png) | ![Rule editor](docs/screenshots/rule_editor.png) | ![Settings](docs/screenshots/settings.png) | ![Extension help](docs/screenshots/extension_help.png) |
 
 ## Privacy
 

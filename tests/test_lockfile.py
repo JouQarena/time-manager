@@ -26,7 +26,7 @@ def test_second_instance_is_refused(tmp_path, foreign_pid):
 
     # Now claim it for a live *other* process and expect a refusal.
     other = foreign_pid
-    path.write_text(f"{other}:0")
+    path.write_text(f"{other}:0", encoding='utf-8')
     second = InstanceLock(path)
     assert second.acquire() is False
     assert second.owned is False
@@ -38,17 +38,17 @@ def test_second_instance_is_refused(tmp_path, foreign_pid):
 def test_stale_lock_from_dead_process_is_taken_over(tmp_path):
     path = tmp_path / "profile.lock"
     dead_pid = 999_999_999  # nothing can have this pid
-    path.write_text(f"{dead_pid}:0")
+    path.write_text(f"{dead_pid}:0", encoding='utf-8')
     lock = InstanceLock(path)
     assert pid_alive(dead_pid) is False
     assert lock.acquire() is True
-    assert lock.path.read_text().startswith(str(os.getpid()))
+    assert lock.path.read_text(encoding="utf-8").startswith(str(os.getpid()))
     lock.release()
 
 
 def test_corrupt_lock_is_treated_as_stale(tmp_path):
     path = tmp_path / "profile.lock"
-    path.write_text("this is not a pid")
+    path.write_text("this is not a pid", encoding='utf-8')
     lock = InstanceLock(path)
     assert lock.acquire() is True
     lock.release()
@@ -56,7 +56,7 @@ def test_corrupt_lock_is_treated_as_stale(tmp_path):
 
 def test_release_does_not_delete_someone_elses_lock(tmp_path, foreign_pid):
     path = tmp_path / "profile.lock"
-    path.write_text(f"{foreign_pid}:0")  # a live holder we never acquired
+    path.write_text(f"{foreign_pid}:0", encoding='utf-8')  # a live holder we never acquired
     lock = InstanceLock(path)
     assert lock.acquire() is False
     lock.release()  # must not remove a lock we do not own

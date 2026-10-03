@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Time Manager Companion — Guide</title>
+  <link rel="stylesheet" href="../options/options.css" />
+  <style>
+    /* Guide-only bits; the shared options stylesheet supplies the rest. */
+    nav.crumbs { display: flex; gap: 10px; align-items: center; margin: 0 0 20px; }
+    nav.crumbs a { color: var(--muted); font-size: 13px; text-decoration: none; }
+    nav.crumbs a:hover { color: var(--text); }
+    nav.crumbs .here { color: var(--text); font-size: 13px; font-weight: 600; }
+
+    .pill {
+      display: inline-flex; align-items: center; gap: 8px;
+      border: 1px solid var(--line); border-radius: 999px;
+      padding: 5px 12px; font-size: 12.5px; color: var(--muted);
+    }
+    .pill .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+    .pill.ok .dot { background: var(--ok); }
+    .pill.bad .dot { background: var(--bad); }
+
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line);
+             vertical-align: top; }
+    th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase;
+         letter-spacing: .05em; }
+    tr:last-child td { border-bottom: 0; }
+    td code { color: var(--text); }
+
+    .steps { counter-reset: step; list-style: none; padding: 0; }
+    .steps li { counter-increment: step; position: relative; padding-left: 38px;
+                margin-bottom: 14px; }
+    .steps li::before {
+      content: counter(step); position: absolute; left: 0; top: 1px;
+      width: 24px; height: 24px; border-radius: 50%;
+      background: var(--accent); color: #fff; font-size: 12.5px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .badge-demo { font-size: 16px; }
+    .footer-note { color: var(--muted); font-size: 12.5px; margin-top: 22px; }
+  </style>
+</head>
+<body>
+  <main>
+    <nav class="crumbs">
+      <span class="here">Guide</span>
+      <span class="muted">·</span>
+      <a href="#" id="open-options">Settings</a>
+      <span class="muted">·</span>
+      <a href="../popup/popup.html">Popup</a>
+      <span class="muted">·</span>
+      <a href="#" id="reconnect-link">Reconnect</a>
+    </nav>
+
+    <h1>Time Manager Companion</h1>
+    <p class="muted">
+      This extension is the half of Time Manager that makes <strong>website
+      rules</strong> work: the desktop app counts apps and games by itself, but
+      only the browser knows which site you are actually looking at.
+    </p>
+    <p><span class="pill" id="link-state"><span class="dot"></span><span id="link-text">Checking the link…</span></span></p>
+
+    <section>
+      <h2>What it does</h2>
+      <ul>
+        <li><strong>Reports the active tab's domain</strong> — and only while the
+          browser window is focused, so background tabs and minimised windows
+          never count against you.</li>
+        <li><strong>Shows the block page</strong> locally in the tab when a
+          website limit is reached, with the reason and the reset time.</li>
+        <li><strong>Keeps the agent honest in the UI</strong>: a toolbar badge
+          (<span class="badge-demo">!</span>) tells you when the link to the
+          desktop app is down, so you are never misled into thinking a limit is
+          being enforced when it is not.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>What it never does</h2>
+      <ul class="muted">
+        <li>It never sends URLs, page titles, search terms or page content — only
+          the <em>domain</em> (for example <span class="mono">youtube.com</span>).</li>
+        <li>It talks only to <span class="mono">127.0.0.1</span> on this computer.
+          There is no server, no account, no telemetry.</li>
+        <li>It cannot block anything by itself: the desktop agent decides, the
+          extension renders. If the agent is not running, nothing is counted and
+          nothing is blocked.</li>
+        <li>Timestamps from the browser are never used for accounting — the
+          agent stamps everything with its own clock.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Install &amp; pair in three steps</h2>
+      <ol class="steps">
+        <li>
+          <strong>Start the desktop app.</strong> Run
+          <span class="mono">TimeManagerTray.exe</span> and leave it running —
+          the extension needs a live agent.
+        </li>
+        <li>
+          <strong>Copy the pairing token.</strong> In the app open
+          <em>Settings ▸ Browser extension</em> and press <strong>Copy</strong>
+          (or run <span class="mono">TimeManager.exe --show-token</span>).
+          The token is a machine secret, like a password.
+        </li>
+        <li>
+          <strong>Paste it here.</strong>
+          <button type="button" id="open-options-2">Open settings</button>
+          → paste into <em>Agent token</em> → <strong>Save &amp; test</strong>.
+          The badge stops showing “!” once the link is up.
+        </li>
+      </ol>
+      <p class="muted">
+        Full walkthrough with fixes for every error:
+        <span class="mono">docs/INSTALL-EXTENSION.md</span> in the app folder.
+      </p>
+    </section>
+
+    <section>
+      <h2>The badge, decoded</h2>
+      <table>
+        <tr><th>Badge</th><th>Meaning</th></tr>
+        <tr><td><span class="badge-demo">!</span></td>
+            <td>The extension is not connected to the desktop app. Website limits
+              are <strong>not</strong> being enforced and website time is not
+              being counted. Open settings and check the token and port.</td></tr>
+        <tr><td><em>(nothing)</em></td>
+            <td>Connected and this tab is fine. Time is counting only if the tab
+              is active and the window is focused.</td></tr>
+        <tr><td><span class="badge-demo">⛔</span></td>
+            <td>The site in the current tab is blocked by a rule you created.</td></tr>
+      </table>
+    </section>
+
+    <section>
+      <h2>When time stops counting</h2>
+      <ul class="muted">
+        <li>The tab is in the background, the window is minimised, or another
+          application has focus — none of these count.</li>
+        <li>Chrome may suspend the extension's worker after idling or sleeping.
+          Time Manager then stops counting website time (it never invents usage)
+          and reconnects on your next tab change, browser restart or within a
+          minute via its own alarm.</li>
+        <li>Closing the browser, quitting the desktop app or switching to a
+          browser profile that was never paired: the link simply goes down and
+          the badge shows “!”.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Troubleshooting</h2>
+      <table>
+        <tr><th>Symptom</th><th>What to do</th></tr>
+        <tr>
+          <td>Badge always shows “!”, settings say <em>not reachable — is the
+              agent running?</em></td>
+          <td>Start <span class="mono">TimeManagerTray.exe</span>. If it is
+              already running, compare <em>Agent port</em> here with
+              <em>Settings ▸ Browser extension ▸ Agent port</em> in the app —
+              they must match (default <span class="mono">17846</span>).</td>
+        </tr>
+        <tr>
+          <td>Settings say <em>AUTH_FAILED</em></td>
+          <td>The token is wrong or was regenerated. Copy it again from the app
+              and re-paste it. Regenerating disconnects every browser on purpose.</td>
+        </tr>
+        <tr>
+          <td><em>Agent did not reply to HELLO</em></td>
+          <td>Something answered on that port but was not Time Manager — most
+              often a port clash. Change the agent port in the app, then use the
+              same number here.</td>
+        </tr>
+        <tr>
+          <td>Connected, but the desktop dashboard still says <em>No browser
+              connected</em></td>
+          <td>Each browser profile is paired separately. Repeat the three steps
+              in every browser and profile you use (Chrome and Edge, and each
+              Windows user).</td>
+        </tr>
+        <tr>
+          <td>A blocked site is still reachable after you paused or disabled the
+              rule</td>
+          <td>Reload the tab: the block page is removed as soon as the agent
+              sends the updated decision, and an open page does not always
+              notice instantly.</td>
+        </tr>
+        <tr>
+          <td>Nothing is blocked at all, no “!”</td>
+          <td>The agent is connected but no <em>Website</em> rule matched this
+              domain. Check the rule in the app: domain only
+              (<span class="mono">youtube.com</span>, not the full URL), the rule
+              enabled, and its schedule active now.</td>
+        </tr>
+      </table>
+    </section>
+
+    <section>
+      <h2>Updating &amp; uninstalling</h2>
+      <ul class="muted">
+        <li><strong>Update:</strong> after updating the desktop app, open
+          <span class="mono">chrome://extensions</span> and press
+          <strong>Reload</strong> on the Time Manager card. Your token stays
+          valid — no re-pairing.</li>
+        <li><strong>Uninstall:</strong> <span class="mono">chrome://extensions</span>
+          → <strong>Remove</strong>. Website rules stay in the app's database;
+          they simply stop being enforced without the extension.</li>
+      </ul>
+    </section>
+
+    <p class="footer-note">
+      Local-only by design: no cloud, no accounts, no telemetry. Everything this
+      extension knows lives in this browser profile and on this machine.
+    </p>
+  </main>
+  <script src="guide.js"></script>
+</body>
+</html>

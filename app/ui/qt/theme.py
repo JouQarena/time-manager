@@ -37,8 +37,17 @@ QWidget {{
     font-size: 13px;
 }}
 QMainWindow, QDialog {{ background: {PALETTE['bg']}; }}
+/* Leaf widgets must stay transparent. The blanket `QWidget` rule above also
+   matches QLabel, and in a squeezed layout (a narrow window, or a card whose
+   text no longer fits) Qt then paints the *window* colour behind every label
+   instead of letting the card's own colour show through: the text ends up on
+   a #12141f band. Nothing that only draws text or is a scroll container
+   should ever fill its rect. */
+QLabel, QCheckBox, QRadioButton, QStatusBar, QScrollArea {{
+    background: transparent;
+}}
 
-QLabel#Title {{ font-size: 19px; font-weight: 650; }}
+
 QLabel#Subtitle {{ color: {PALETTE['text_dim']}; font-size: 12px; }}
 QLabel#SectionTitle {{
     color: {PALETTE['text_dim']}; font-size: 11px; font-weight: 600;

@@ -94,7 +94,7 @@ if defined BUILD (
 
 REM ---------------------------------------------------- 4. verify it works
 if defined NOTEST goto verify
-echo [4/4] Running the test suite - 542 tests, about half a minute ...
+echo [4/4] Running the test suite - the whole suite, about half a minute ...
 "%VPY%" -m pytest -q
 if errorlevel 1 (
     echo [X] Some tests failed - the install is not healthy. Copy the output
